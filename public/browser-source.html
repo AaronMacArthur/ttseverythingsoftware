@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ttstotwitch Browser Source</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="browser-source-login-body">
+    <main id="browserSourceLogin" class="obs-login-window">
+      <form id="browserSourceLoginForm" class="browser-source-login-card">
+        <h1>ttstotwitch login:</h1>
+        <label class="field">
+          <span>Email</span>
+          <input id="browserSourceEmail" type="email" autocomplete="email" required />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input id="browserSourcePassword" type="password" autocomplete="current-password" required />
+        </label>
+        <button id="browserSourceLoginButton" class="primary-button" type="submit">Log in</button>
+        <p class="obs-login-help">right click and click interact in order to login</p>
+        <p id="browserSourceLoginFeedback" class="feedback"></p>
+      </form>
+    </main>
+
+    <div id="browserSourceRuntime" class="browser-source-hidden" hidden aria-hidden="true">
+      <h1 id="browserSourceTitle">Loading browser source...</h1>
+      <p id="browserSourceStatus">Waiting for configuration.</p>
+    </div>
+    <audio id="browserSourcePlayer" autoplay preload="auto"></audio>
+
+    <script src="/browser-source.js" defer></script>
+  </body>
+</html>

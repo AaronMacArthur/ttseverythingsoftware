@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TTS Everything</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/desktop.css" />
+  </head>
+  <body class="desktop-mode">
+    <audio id="audioPlayer"></audio>
+    <span id="adminNavLink" class="hidden" aria-hidden="true"></span>
+    <button id="dashboardLogoutButton" class="hidden" type="button">Log out</button>
+    <button id="logoutButton" class="hidden" type="button">Log out</button>
+    <button id="manageBillingButton" class="hidden" type="button">Billing</button>
+    <button id="copyBrowserSourceButton" class="hidden" type="button">Copy</button>
+    <div class="hidden">
+      <strong id="billingStatusText">Local</strong>
+      <p id="billingRenewalText">Local desktop mode.</p>
+      <div id="setupAccountStep"></div>
+      <div id="setupSourcesStep"></div>
+      <div id="setupObsStep"></div>
+      <input id="browserSourceEnabled" type="checkbox" />
+      <input id="browserSourceUrl" type="text" />
+      <input id="channelName" type="text" />
+      <button id="saveApiKeysButton" type="button">Save keys</button>
+    </div>
+
+    <div class="app-frame">
+      <aside class="rail">
+        <div class="app-mark">
+          <span>TTS</span>
+          <strong>Everything</strong>
+        </div>
+        <div class="rail-group">
+          <button class="rail-page-button is-active" type="button" data-page-target="live">Live Setup</button>
+          <button class="rail-page-button" type="button" data-page-target="tts">TTS & Voices</button>
+          <button class="rail-page-button" type="button" data-page-target="moderation">Moderation</button>
+          <button class="rail-page-button" type="button" data-page-target="playback">Playback</button>
+          <button class="rail-page-button" type="button" data-page-target="reference">Reference</button>
+        </div>
+        <div class="rail-status">
+          <span>Session</span>
+          <strong id="sessionStatus">Checking...</strong>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="command-bar">
+          <div>
+            <p class="eyebrow">Local desktop console</p>
+            <h1>TTS Everything</h1>
+          </div>
+          <div class="command-actions">
+            <button class="ghost-button" id="disconnectButton" type="button">Disconnect</button>
+            <button class="primary-button" form="liveForm" id="connectButton" type="submit">Connect live chat</button>
+          </div>
+        </header>
+
+        <section class="status-strip" aria-label="Runtime status">
+          <div class="status-tile">
+            <span>Twitch</span>
+            <strong id="twitchStatus">Off</strong>
+          </div>
+          <div class="status-tile">
+            <span>TikTok</span>
+            <strong id="tiktokStatus">Off</strong>
+          </div>
+          <div class="status-tile">
+            <span>Kick</span>
+            <strong id="kickStatus">Off</strong>
+          </div>
+          <div class="status-tile">
+            <span>YouTube</span>
+            <strong id="youtubeStatus">Off</strong>
+          </div>
+          <div class="status-tile">
+            <span>Rumble</span>
+            <strong id="rumbleStatus">Off</strong>
+          </div>
+          <div class="status-tile">
+            <span>Playback</span>
+            <strong id="runtimeOwnerStatus">Local</strong>
+          </div>
+        </section>
+
+        <p id="feedback" class="feedback">Starting local console...</p>
+
+        <div class="console-grid">
+          <section id="desktopSettingsPanel" class="panel wide desktop-page-panel is-active" data-page="live">
+            <div class="panel-title">
+              <span>Live source setup</span>
+              <strong id="obsStatus">Ready</strong>
+            </div>
+            <form id="liveForm" class="settings-form">
+              <div class="source-grid">
+                <article class="source-card">
+                  <label class="switch-line">
+                    <input id="twitchSourceEnabled" type="checkbox" checked />
+                    <span>Read Twitch chat</span>
+                  </label>
+                  <label class="field" data-source-section="twitch">
+                    <span>Twitch channel</span>
+                    <input id="desktopChannelName" type="text" maxlength="25" placeholder="yourchannel" />
+                  </label>
+                </article>
+
+                <article class="source-card">
+                  <label class="switch-line">
+                    <input id="tiktokSourceEnabled" type="checkbox" />
+                    <span>Read TikTok via TikFinity</span>
+                  </label>
+                  <label class="field" data-source-section="tiktok">
+                    <span>TikFinity endpoint</span>
+                    <div class="input-button">
+                      <input id="tiktokEndpoint" name="tiktokEndpoint" type="text" value="ws://localhost:21213/" readonly />
+                      <button class="ghost-button icon-button" id="copyTiktokEndpointButton" type="button">Copy</button>
+                    </div>
+                  </label>
+                </article>
+
+                <article class="source-card">
+                  <label class="switch-line">
+                    <input id="kickSourceEnabled" type="checkbox" />
+                    <span>Read Kick chat</span>
+                  </label>
+                  <label class="field" data-source-section="kick">
+                    <span>Kick channel</span>
+                    <input id="desktopKickChannel" type="text" placeholder="kick channel slug" />
+                  </label>
+                </article>
+
+                <article class="source-card">
+                  <label class="switch-line">
+                    <input id="youtubeSourceEnabled" type="checkbox" />
+                    <span>Read YouTube chat</span>
+                  </label>
+                  <div class="form-grid two compact" data-source-section="youtube">
+                    <label class="field">
+                      <span>YouTube API key</span>
+                      <input id="desktopYoutubeApiKey" type="password" autocomplete="off" placeholder="YouTube Data API key" />
+                    </label>
+                    <label class="field">
+                      <span>YouTube live chat ID</span>
+                      <input id="desktopYoutubeLiveChatId" type="text" placeholder="liveChatId" />
+                    </label>
+                  </div>
+                </article>
+
+                <article class="source-card">
+                  <label class="switch-line">
+                    <input id="rumbleSourceEnabled" type="checkbox" />
+                    <span>Read Rumble chat</span>
+                  </label>
+                  <label class="field" data-source-section="rumble">
+                    <span>Rumble Live Stream API URL</span>
+                    <input id="desktopRumbleApiUrl" type="password" autocomplete="off" placeholder="https://rumble.com/-livestream-api/..." />
+                  </label>
+                </article>
+              </div>
+            </form>
+            <div class="toolbar-row">
+              <strong id="planStatus">Desktop Local</strong>
+              <span id="remainingStatus" class="soft-stat">Saved locally on this computer.</span>
+              <button class="primary-button" id="saveDesktopSettingsButton" type="button">Save live setup</button>
+            </div>
+          </section>
+
+          <section class="panel desktop-page-panel is-active" data-page="live">
+            <div class="panel-title">
+              <span>Voice assignments</span>
+              <strong id="assignmentCount">0 chatters</strong>
+            </div>
+            <div class="input-button">
+              <input id="assignmentSearch" type="search" placeholder="Search chatters" />
+              <button class="primary-button" id="saveAssignmentsButton" type="button">Save</button>
+              <button class="ghost-button" id="clearAssignmentsButton" type="button">Clear</button>
+            </div>
+            <ul id="assignmentList" class="simple-list">
+              <li>No chatters assigned yet.</li>
+            </ul>
+          </section>
+
+          <section id="activity" class="panel desktop-page-panel is-active" data-page="live">
+            <div class="panel-title">
+              <span>Now playing</span>
+              <button class="ghost-button" id="clearQueueButton" type="button">Clear queue</button>
+            </div>
+            <div class="now-playing">
+              <strong id="nowPlayingTitle">Nothing queued yet</strong>
+              <p id="nowPlayingText">Connect a live chat source to begin.</p>
+            </div>
+            <div class="panel-title slim">
+              <span>Latest spoken messages</span>
+              <button class="ghost-button" id="toggleRecentButton" type="button" aria-expanded="false">Show all</button>
+            </div>
+            <ul id="queueList" class="queue-list">
+              <li class="queue-empty">No spoken messages yet.</li>
+            </ul>
+          </section>
+
+          <section id="settings" class="panel wide desktop-page-panel" data-page="tts">
+            <div class="panel-title">
+              <span>TTS providers</span>
+              <strong id="ttsProviderLabel">ElevenLabs</strong>
+            </div>
+            <div class="form-grid two">
+              <label class="field">
+                <span>ElevenLabs API key</span>
+                <input id="desktopApiKey" type="password" autocomplete="off" placeholder="Paste your ElevenLabs API key" />
+                <small id="desktopSettingsStatus">Saved keys are shown as ******.</small>
+              </label>
+              <label class="field">
+                <span>Cartesia API key</span>
+                <input id="desktopCartesiaApiKey" type="password" autocomplete="off" placeholder="Paste your Cartesia API key" />
+              </label>
+            </div>
+
+            <div class="form-grid two">
+              <label class="field">
+                <span>Provider mode</span>
+                <div class="toggle-row dense">
+                  <label class="switch-line">
+                    <input id="elevenLabsProviderEnabled" type="checkbox" checked />
+                    <span>ElevenLabs</span>
+                  </label>
+                  <label class="switch-line">
+                    <input id="cartesiaProviderEnabled" type="checkbox" />
+                    <span>Cartesia</span>
+                  </label>
+                  <label class="switch-line">
+                    <input id="bothProvidersEnabled" type="checkbox" />
+                    <span>Both</span>
+                  </label>
+                </div>
+                <select id="ttsProvider" name="ttsProvider" class="hidden">
+                  <option value="elevenlabs">ElevenLabs</option>
+                  <option value="cartesia">Cartesia</option>
+                </select>
+                <input id="ttsProviderMode" class="hidden" type="text" value="single" />
+              </label>
+
+              <label class="field">
+                <span>Chat voice behavior</span>
+                <select id="voiceMode" name="voiceMode">
+                  <option value="source">Follow source/provider routing</option>
+                  <option value="rotate_all">Rotate all voices</option>
+                  <option value="fixed_all">Single voice for all chat</option>
+                  <option value="rotate_cartesia">Rotate Cartesia voices</option>
+                  <option value="rotate_elevenlabs">Rotate ElevenLabs voices</option>
+                  <option value="random">Random ElevenLabs per chatter</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="form-grid two compact hidden" id="fixedVoicePanel">
+              <label class="field">
+                <span>Single voice provider</span>
+                <select id="fixedVoiceProvider">
+                  <option value="elevenlabs">ElevenLabs</option>
+                  <option value="cartesia">Cartesia</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Single voice</span>
+                <select id="fixedVoiceId"></select>
+              </label>
+            </div>
+
+            <div class="form-grid five compact provider-routing hidden" id="providerRoutingPanel">
+              <label class="field">
+                <span>Twitch engine</span>
+                <select id="twitchTtsProvider"><option value="elevenlabs">ElevenLabs</option><option value="cartesia">Cartesia</option><option value="both">Both</option></select>
+              </label>
+              <label class="field">
+                <span>TikTok engine</span>
+                <select id="tiktokTtsProvider"><option value="elevenlabs">ElevenLabs</option><option value="cartesia">Cartesia</option><option value="both">Both</option></select>
+              </label>
+              <label class="field">
+                <span>Kick engine</span>
+                <select id="kickTtsProvider"><option value="elevenlabs">ElevenLabs</option><option value="cartesia">Cartesia</option><option value="both">Both</option></select>
+              </label>
+              <label class="field">
+                <span>YouTube engine</span>
+                <select id="youtubeTtsProvider"><option value="elevenlabs">ElevenLabs</option><option value="cartesia">Cartesia</option><option value="both">Both</option></select>
+              </label>
+              <label class="field">
+                <span>Rumble engine</span>
+                <select id="rumbleTtsProvider"><option value="elevenlabs">ElevenLabs</option><option value="cartesia">Cartesia</option><option value="both">Both</option></select>
+              </label>
+            </div>
+
+            <div class="form-grid two compact">
+              <label class="field">
+                <span>ElevenLabs model</span>
+                <select id="elevenLabsModelId">
+                  <option value="eleven_flash_v2_5">Flash v2.5</option>
+                  <option value="eleven_turbo_v2_5">Turbo v2.5</option>
+                  <option value="eleven_multilingual_v2">Multilingual v2</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Cartesia model</span>
+                <select id="cartesiaModelId">
+                  <option value="sonic-3">Sonic 3</option>
+                  <option value="sonic-3-2026-01-12">Sonic 3 stable snapshot</option>
+                  <option value="sonic-3-latest">Sonic 3 latest</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="field hidden">
+              <span>Model</span>
+              <select id="modelId" name="modelId"></select>
+            </label>
+
+            <select id="desktopCartesiaVoicePreset" class="hidden" aria-hidden="true">
+              <option value="f786b574-daa5-4673-aa0c-cbe3e8534c02">Katie</option>
+              <option value="6376f26b-718a-48b2-83e8-89513c7b1312">DerdleZed</option>
+              <option value="258fdf9f-80c0-4c73-abb7-e0905e30cd64">Donald</option>
+              <option value="custom">Custom voice ID</option>
+            </select>
+            <input id="desktopCartesiaVoiceId" class="hidden" type="hidden" />
+
+            <div class="voice-library">
+              <div class="panel-title slim">
+                <span>Voice ID library</span>
+                <strong>Custom voices</strong>
+              </div>
+              <div class="form-grid four compact">
+                <label class="field">
+                  <span>Provider</span>
+                  <select id="customVoiceProvider">
+                    <option value="elevenlabs">ElevenLabs</option>
+                    <option value="cartesia">Cartesia</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Voice name</span>
+                  <input id="customVoiceName" type="text" maxlength="40" placeholder="Voice name" />
+                </label>
+                <label class="field">
+                  <span>Voice ID</span>
+                  <input id="customVoiceId" type="text" maxlength="120" placeholder="Paste voice ID" />
+                </label>
+                <label class="field">
+                  <span>Add</span>
+                  <button class="primary-button" id="addCustomVoiceButton" type="button">Add voice ID</button>
+                </label>
+              </div>
+              <ul id="customVoiceList" class="simple-list">
+                <li>No custom voice IDs yet.</li>
+              </ul>
+            </div>
+
+            <div class="form-grid three compact">
+              <label class="field range-field">
+                <span>Stability <b id="stabilityValue">0.45</b></span>
+                <input id="stability" type="range" min="0" max="1" step="0.01" value="0.45" />
+              </label>
+              <label class="field range-field">
+                <span>Similarity <b id="similarityValue">0.75</b></span>
+                <input id="similarityBoost" type="range" min="0" max="1" step="0.01" value="0.75" />
+              </label>
+              <label class="field range-field">
+                <span>Speed <b id="speedValue">1.00</b></span>
+                <input id="speed" type="range" min="0.7" max="1.2" step="0.01" value="1" />
+              </label>
+            </div>
+            <div class="toolbar-row">
+              <button class="primary-button" id="saveSettingsButton" type="button">Save TTS setup</button>
+            </div>
+          </section>
+
+          <section id="voices" class="panel desktop-page-panel" data-page="tts">
+            <div class="panel-title">
+              <span>Per-voice volume</span>
+              <strong id="voiceVolumeLabel">100%</strong>
+            </div>
+            <label class="field">
+              <span>Voice</span>
+              <select id="voiceVolumeVoice"></select>
+            </label>
+            <label class="field range-field">
+              <span>Volume</span>
+              <input id="voiceVolumeValue" type="range" min="0" max="1" step="0.01" value="1" />
+            </label>
+          </section>
+
+          <section id="moderation" class="panel wide desktop-page-panel" data-page="moderation">
+            <div class="panel-title">
+              <span>Moderation rules</span>
+              <button class="primary-button" id="saveModerationButton" type="button">Save moderation</button>
+            </div>
+            <div class="toggle-row dense">
+              <label class="switch-line"><input id="skipCommands" type="checkbox" checked /><span>Skip commands</span></label>
+              <label class="switch-line"><input id="skipLinks" type="checkbox" checked /><span>Skip links</span></label>
+              <label class="switch-line"><input id="skipEmotesOnly" type="checkbox" checked /><span>Skip emote-only</span></label>
+              <label class="switch-line"><input id="speakMentionsOnly" type="checkbox" /><span>Twitch mentions only</span></label>
+              <label class="switch-line"><input id="followersOnly" type="checkbox" /><span>Followers/supporters only</span></label>
+              <label class="switch-line"><input id="ttsAntiSpamEnabled" type="checkbox" checked /><span>Anti-spam filter</span></label>
+            </div>
+            <div class="form-grid four compact">
+              <label class="field"><span>Min length</span><input id="minLength" type="number" min="1" max="200" value="2" /></label>
+              <label class="field"><span>Max characters</span><input id="maxMessageCharacters" type="number" min="1" max="100" value="100" /></label>
+              <label class="field"><span>User cooldown</span><input id="userCooldownSeconds" type="number" min="0" max="3600" value="0" /></label>
+              <label class="field"><span>Anti-spam action</span><select id="ttsAntiSpamAction"><option value="skip">Skip</option><option value="remove">Remove part</option><option value="placeholder">Say skipped</option></select></label>
+              <label class="field"><span>Repeated words</span><input id="ttsAntiSpamMaxRepeatedWordCount" type="number" min="2" max="50" value="4" /></label>
+              <label class="field"><span>Repeated sounds</span><input id="ttsAntiSpamMaxRepeatedShortTokenCount" type="number" min="2" max="50" value="3" /></label>
+              <label class="field"><span>Alternating repeats</span><input id="ttsAntiSpamMaxAlternatingPatternCount" type="number" min="2" max="50" value="3" /></label>
+              <label class="field"><span>Test phrase</span><input id="wordTesterInput" type="text" placeholder="test phrase" /></label>
+              <label class="field full">
+                <span>Banned words, phrases, or sounds</span>
+                <textarea id="bannedWords" class="expandable-textarea" rows="12"></textarea>
+                <small>One per line. This single list is used for banned words, blocked phrases, and blocked sounds.</small>
+              </label>
+              <label class="field full">
+                <span>Upload banned word list</span>
+                <input id="bannedWordsFileInput" type="file" accept=".txt,text/plain" multiple />
+                <small id="bannedWordsUploadStatus">Upload .txt files. Lines are merged into the list above.</small>
+              </label>
+            </div>
+            <div class="toolbar-row">
+              <span id="wordTesterResult" class="soft-stat">Test a phrase to see whether it is blocked.</span>
+              <button class="ghost-button" id="runWordTesterButton" type="button">Run test</button>
+              <button class="ghost-button" id="previewWordButton" type="button">Preview</button>
+              <button class="danger-button" id="banTestWordButton" type="button">Ban phrase</button>
+            </div>
+          </section>
+
+          <section class="panel desktop-page-panel" data-page="moderation">
+            <div class="panel-title">
+              <span>Banned lists</span>
+              <strong>Local controls</strong>
+            </div>
+            <label class="field">
+              <span>Banned chatters</span>
+              <textarea id="bannedChatters" rows="5"></textarea>
+            </label>
+            <ul id="bannedChattersList" class="simple-list">
+              <li>No banned chatters.</li>
+            </ul>
+          </section>
+
+          <section class="panel desktop-page-panel" data-page="moderation">
+            <div class="panel-title">
+              <span>Anti-spam log</span>
+              <strong>Recent</strong>
+            </div>
+            <ul id="antiSpamLog" class="simple-list">
+              <li>No anti-spam skips yet.</li>
+            </ul>
+          </section>
+
+          <section class="panel desktop-page-panel" data-page="playback">
+            <div class="panel-title">
+              <span>Queue behavior</span>
+              <strong>Backpressure</strong>
+            </div>
+            <div class="form-grid two compact">
+              <label class="switch-line full">
+                <input id="neverSkipMidSpeech" type="checkbox" checked />
+                <span>Never skip mid-speech</span>
+              </label>
+              <label class="field">
+                <span>Max queue size</span>
+                <input id="maxQueueSize" type="number" min="1" max="50" value="50" />
+              </label>
+              <label class="field">
+                <span>Pause seconds</span>
+                <input id="messagePauseSeconds" type="number" min="0" max="10" step="0.25" value="0" />
+              </label>
+              <label class="field">
+                <span>Fast chat threshold</span>
+                <input id="fastChatMessageThreshold" type="number" min="2" max="200" value="10" />
+              </label>
+              <label class="field">
+                <span>Fast chat window</span>
+                <input id="fastChatWindowSeconds" type="number" min="2" max="120" value="12" />
+              </label>
+              <label class="field full">
+                <span>Skip behavior</span>
+                <select id="fastChatSkipBehavior">
+                  <option value="drop_oldest">Drop oldest waiting</option>
+                  <option value="drop_newest">Skip newest</option>
+                  <option value="latest_only">Keep latest only</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="panel desktop-page-panel" data-page="playback">
+            <div class="panel-title">
+              <span>Mute hotkey</span>
+              <strong id="ttsMuteState">TTS unmuted</strong>
+            </div>
+            <div class="form-grid one">
+              <label class="field">
+                <span>Global mute hotkey</span>
+                <div class="input-button">
+                  <input id="muteHotkey" type="text" readonly placeholder="Click Set, then press a key combo" />
+                  <button class="ghost-button" id="captureMuteHotkeyButton" type="button">Set</button>
+                  <button class="ghost-button" id="clearMuteHotkeyButton" type="button">Clear</button>
+                </div>
+                <small id="muteHotkeyStatus">Works even when this app is not focused.</small>
+              </label>
+              <button class="danger-button" id="toggleMuteButton" type="button">Mute TTS now</button>
+            </div>
+          </section>
+
+          <section class="panel desktop-page-panel" data-page="playback">
+            <div class="panel-title">
+              <span>OBS avatar source</span>
+              <strong>Pepe speaking image</strong>
+            </div>
+            <label class="field">
+              <span>Transparent browser source URL</span>
+              <div class="input-button">
+                <input id="obsPepeSourceUrl" type="text" readonly />
+                <button class="ghost-button" id="copyObsPepeSourceButton" type="button">Copy</button>
+              </div>
+              <small>Use this as an OBS Browser Source. It shows the open image only while TTS audio is speaking.</small>
+            </label>
+          </section>
+
+          <section class="panel wide desktop-page-panel" data-page="playback">
+            <div class="panel-title">
+              <span>App data</span>
+              <strong>Local reset</strong>
+            </div>
+            <div class="toolbar-row">
+              <span class="soft-stat">Reset clears saved keys, sources, voices, moderation, and local chat history.</span>
+              <button class="danger-button" id="resetAppButton" type="button">Reset app</button>
+            </div>
+          </section>
+
+          <section class="panel wide desktop-page-panel" data-page="reference">
+            <div class="panel-title">
+              <span>Provider reference</span>
+              <strong>Notes</strong>
+            </div>
+            <div class="api-options-grid">
+              <article class="api-option">
+                <div class="panel-title slim">
+                  <span>ElevenLabs</span>
+                  <strong>Voice library</strong>
+                </div>
+                <p>ElevenLabs is the default when you want the largest voice catalog, creator tooling, cloning options, and expressive voices.</p>
+                <p class="queue-meta">Best for: voice variety, character voices, and easy experimentation.</p>
+              </article>
+              <article class="api-option">
+                <div class="panel-title slim">
+                  <span>Cartesia</span>
+                  <strong>Fast live TTS</strong>
+                </div>
+                <p>Cartesia is useful for low-latency streams and fast chat playback. Its voices are configured in the TTS & Voices page.</p>
+                <p class="queue-meta">Best for: low-latency chat, Cartesia-specific voices, and fast response.</p>
+              </article>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script src="/dashboard.js" defer></script>
+  </body>
+</html>

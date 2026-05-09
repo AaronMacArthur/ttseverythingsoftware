@@ -1,0 +1,14 @@
+{
+  "name": "tts-everything",
+  "version": "1.0.0",
+  "description": "A local desktop multistream TTS app for Twitch, TikTok, Kick, YouTube, and Rumble.",
+  "main": "desktop-main.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --check server.js && node --check public/dashboard.js && node --check desktop-main.js && node --check desktop-preload.js"
+  },
+  "dependencies": {
+    "pg": "^8.20.0",
+    "stripe": "^22.1.0"
+  }
+}

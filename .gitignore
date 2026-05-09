@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+
+data/
+node_modules/
+dist/
+build/
+release/
+
+*.log
+server.stdout.log
+server.stderr.log
+
+*.local
+desktop-settings.json
+store.json
