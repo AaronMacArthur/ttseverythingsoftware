@@ -34,6 +34,7 @@ const DEFAULT_LIVE_SETTINGS = {
   kickSourceEnabled: false,
   youtubeSourceEnabled: false,
   rumbleSourceEnabled: false,
+  streamerbotSourceEnabled: false,
   ttsProvider: "elevenlabs",
   ttsProviderMode: "single",
   sourceTtsProviders: {
@@ -92,7 +93,11 @@ const elements = {
   billingStatusText: document.getElementById("billingStatusText"),
   channelName: document.getElementById("channelName"),
   clearAssignmentsButton: document.getElementById("clearAssignmentsButton"),
+  clearCombinedChatButton: document.getElementById("clearCombinedChatButton"),
+  clearGiftDonoButton: document.getElementById("clearGiftDonoButton"),
   clearQueueButton: document.getElementById("clearQueueButton"),
+  combinedChatCount: document.getElementById("combinedChatCount"),
+  combinedChatList: document.getElementById("combinedChatList"),
   connectButton: document.getElementById("connectButton"),
   cartesiaProviderEnabled: document.getElementById("cartesiaProviderEnabled"),
   bothProvidersEnabled: document.getElementById("bothProvidersEnabled"),
@@ -144,6 +149,7 @@ const elements = {
   maxMessageCharacters: document.getElementById("maxMessageCharacters"),
   maxQueueSize: document.getElementById("maxQueueSize"),
   messagePauseSeconds: document.getElementById("messagePauseSeconds"),
+  minimizeToTrayOnExit: document.getElementById("minimizeToTrayOnExit"),
   userCooldownSeconds: document.getElementById("userCooldownSeconds"),
   minLength: document.getElementById("minLength"),
   modelId: document.getElementById("modelId"),
@@ -152,6 +158,8 @@ const elements = {
   fixedVoiceId: document.getElementById("fixedVoiceId"),
   fixedVoicePanel: document.getElementById("fixedVoicePanel"),
   fixedVoiceProvider: document.getElementById("fixedVoiceProvider"),
+  giftDonoCount: document.getElementById("giftDonoCount"),
+  giftDonoList: document.getElementById("giftDonoList"),
   providerRoutingPanel: document.getElementById("providerRoutingPanel"),
   muteHotkey: document.getElementById("muteHotkey"),
   muteHotkeyStatus: document.getElementById("muteHotkeyStatus"),
@@ -161,6 +169,8 @@ const elements = {
   obsStatus: document.getElementById("obsStatus"),
   obsPepeSourceUrl: document.getElementById("obsPepeSourceUrl"),
   planStatus: document.getElementById("planStatus"),
+  popoutCombinedChatButton: document.getElementById("popoutCombinedChatButton"),
+  popoutGiftDonoButton: document.getElementById("popoutGiftDonoButton"),
   previewWordButton: document.getElementById("previewWordButton"),
   queueList: document.getElementById("queueList"),
   remainingStatus: document.getElementById("remainingStatus"),
@@ -182,6 +192,9 @@ const elements = {
   speakMentionsOnly: document.getElementById("speakMentionsOnly"),
   speed: document.getElementById("speed"),
   speedValue: document.getElementById("speedValue"),
+  streamerbotEndpoint: document.getElementById("streamerbotEndpoint"),
+  streamerbotSourceEnabled: document.getElementById("streamerbotSourceEnabled"),
+  streamerbotStatus: document.getElementById("streamerbotStatus"),
   stability: document.getElementById("stability"),
   stabilityValue: document.getElementById("stabilityValue"),
   similarityBoost: document.getElementById("similarityBoost"),
@@ -224,6 +237,8 @@ const elements = {
 };
 
 const queue = [];
+const combinedChatMessages = [];
+const giftDonoEvents = [];
 const pendingMessages = [];
 const playbackQueue = [];
 const speakerAssignments = {};
@@ -266,16 +281,24 @@ let youtubePollTimer = null;
 let youtubeNextPageToken = "";
 let rumblePollTimer = null;
 const rumbleSeenMessages = new Set();
+const combinedChatChannel = typeof BroadcastChannel === "function" ? new BroadcastChannel("tts-everything-combined-chat") : null;
+const giftDonoChannel = typeof BroadcastChannel === "function" ? new BroadcastChannel("tts-everything-gift-dono") : null;
 let livePausedManually = false;
 let browserSourceOwnsPlayback = false;
 let voiceMapSavePromise = Promise.resolve();
+let streamerbotSocket = null;
+let streamerbotConnectInFlight = false;
 
 initializeDashboard();
 
 async function initializeDashboard() {
   bindEvents();
   bindDesktopPages();
+  bindCombinedChatChannel();
+  bindGiftDonoChannel();
   renderObsPepeSourceUrl();
+  renderCombinedChat();
+  renderGiftDonoEvents();
   renderAssignments();
   renderQueue();
   updateSliderLabels();
@@ -293,12 +316,16 @@ async function initializeDashboard() {
 function bindEvents() {
   elements.liveForm.addEventListener("submit", handleConnect);
   elements.clearAssignmentsButton.addEventListener("click", resetAssignments);
+  elements.clearCombinedChatButton?.addEventListener("click", clearCombinedChat);
+  elements.clearGiftDonoButton?.addEventListener("click", clearGiftDonoEvents);
   elements.saveAssignmentsButton.addEventListener("click", saveVoiceAssignments);
   elements.assignmentSearch.addEventListener("input", renderAssignments);
   elements.clearQueueButton.addEventListener("click", clearQueue);
   elements.copyBrowserSourceButton.addEventListener("click", () => copyField(elements.browserSourceUrl, "OBS browser source URL copied."));
   elements.copyObsPepeSourceButton?.addEventListener("click", () => copyField(elements.obsPepeSourceUrl, "OBS Pepe browser source URL copied."));
   elements.copyTiktokEndpointButton.addEventListener("click", () => copyField(elements.tiktokEndpoint, "TikFinity endpoint copied."));
+  elements.popoutCombinedChatButton?.addEventListener("click", openCombinedChatWindow);
+  elements.popoutGiftDonoButton?.addEventListener("click", openGiftDonoWindow);
   elements.captureMuteHotkeyButton.addEventListener("click", beginMuteHotkeyCapture);
   elements.clearMuteHotkeyButton.addEventListener("click", clearMuteHotkey);
   elements.elevenLabsProviderEnabled.addEventListener("change", () => setProviderFromCheckbox("elevenlabs"));
@@ -342,6 +369,9 @@ function bindEvents() {
     elements.kickSourceEnabled,
     elements.youtubeSourceEnabled,
     elements.rumbleSourceEnabled,
+    elements.streamerbotSourceEnabled,
+    elements.streamerbotEndpoint,
+    elements.minimizeToTrayOnExit,
     elements.twitchTtsProvider,
     elements.tiktokTtsProvider,
     elements.kickTtsProvider,
@@ -385,6 +415,56 @@ function bindEvents() {
   }
 }
 
+function bindCombinedChatChannel() {
+  if (!combinedChatChannel) {
+    return;
+  }
+  combinedChatChannel.addEventListener("message", (event) => {
+    if (event.data?.type === "chat-request-state") {
+      broadcastCombinedChatState();
+    }
+  });
+}
+
+function bindGiftDonoChannel() {
+  if (!giftDonoChannel) {
+    return;
+  }
+  giftDonoChannel.addEventListener("message", (event) => {
+    if (event.data?.type === "gift-dono-request-state") {
+      broadcastGiftDonoState();
+    }
+  });
+}
+
+async function openCombinedChatWindow() {
+  if (window.ttsDesktop?.openCombinedChatWindow) {
+    const result = await window.ttsDesktop.openCombinedChatWindow();
+    if (!result?.ok) {
+      setFeedback(result?.error || "Unable to open chat window.", true);
+      return;
+    }
+    broadcastCombinedChatState();
+    return;
+  }
+  window.open("/combined-chat.html", "tts-everything-combined-chat", "width=420,height=760");
+  broadcastCombinedChatState();
+}
+
+async function openGiftDonoWindow() {
+  if (window.ttsDesktop?.openGiftDonoWindow) {
+    const result = await window.ttsDesktop.openGiftDonoWindow();
+    if (!result?.ok) {
+      setFeedback(result?.error || "Unable to open gifts/donos window.", true);
+      return;
+    }
+    broadcastGiftDonoState();
+    return;
+  }
+  window.open("/gift-dono.html", "tts-everything-gift-dono", "width=460,height=680");
+  broadcastGiftDonoState();
+}
+
 function bindDesktopPages() {
   const pageButtons = Array.from(document.querySelectorAll("[data-page-target]"));
   const pagePanels = Array.from(document.querySelectorAll("[data-page]"));
@@ -415,7 +495,8 @@ function syncSourceSections(settings = getLiveSettings()) {
     tiktok: liveSettings.tiktokSourceEnabled,
     kick: liveSettings.kickSourceEnabled,
     youtube: liveSettings.youtubeSourceEnabled,
-    rumble: liveSettings.rumbleSourceEnabled
+    rumble: liveSettings.rumbleSourceEnabled,
+    streamerbot: liveSettings.streamerbotSourceEnabled
   };
 
   for (const section of document.querySelectorAll("[data-source-section]")) {
@@ -715,6 +796,8 @@ function updateLiveStatusStrip() {
   const kickConnecting = kickConnectInFlight || kickSocket?.readyState === WebSocket.CONNECTING;
   const youtubeConnected = Boolean(youtubePollTimer);
   const rumbleConnected = Boolean(rumblePollTimer);
+  const streamerbotConnected = streamerbotSocket?.readyState === WebSocket.OPEN;
+  const streamerbotConnecting = streamerbotConnectInFlight || streamerbotSocket?.readyState === WebSocket.CONNECTING;
 
   elements.twitchStatus.textContent = liveSettings.twitchSourceEnabled
     ? twitchConnected
@@ -747,6 +830,13 @@ function updateLiveStatusStrip() {
       ? "Polling"
       : "Ready"
     : "Off";
+  elements.streamerbotStatus.textContent = liveSettings.streamerbotSourceEnabled
+    ? streamerbotConnected
+      ? "Connected"
+      : streamerbotConnecting
+        ? "Connecting"
+        : "Ready"
+    : "Off";
   elements.obsStatus.textContent = "Ready";
   elements.runtimeOwnerStatus.textContent = "Local";
 
@@ -755,6 +845,7 @@ function updateLiveStatusStrip() {
   setStatusTone(elements.kickStatus, kickConnected, liveSettings.kickSourceEnabled);
   setStatusTone(elements.youtubeStatus, youtubeConnected, liveSettings.youtubeSourceEnabled);
   setStatusTone(elements.rumbleStatus, rumbleConnected, liveSettings.rumbleSourceEnabled);
+  setStatusTone(elements.streamerbotStatus, streamerbotConnected, liveSettings.streamerbotSourceEnabled);
   setStatusTone(elements.obsStatus, true, true);
   setStatusTone(elements.runtimeOwnerStatus, true, true);
 }
@@ -794,6 +885,8 @@ function renderDesktopSettings(settings, options = {}) {
   elements.desktopYoutubeLiveChatId.value = settings.youtubeLiveChatId || "";
   elements.desktopRumbleApiUrl.value = settings.rumbleApiUrlConfigured ? SAVED_SECRET_MASK : "";
   elements.desktopRumbleApiUrl.placeholder = "https://rumble.com/-livestream-api/...";
+  elements.streamerbotEndpoint.value = settings.streamerbotEndpoint || "ws://127.0.0.1:8080/";
+  elements.minimizeToTrayOnExit.checked = Boolean(settings.minimizeToTrayOnExit);
   elements.muteHotkey.value = settings.muteHotkey || "";
   elements.muteHotkeyStatus.textContent = settings.muteHotkey
     ? `Global mute hotkey saved: ${settings.muteHotkey}`
@@ -827,6 +920,8 @@ async function saveDesktopSettings(options = {}) {
         youtubeApiKey: getUnmaskedFieldValue(elements.desktopYoutubeApiKey),
         youtubeLiveChatId: elements.desktopYoutubeLiveChatId.value,
         rumbleApiUrl: getUnmaskedFieldValue(elements.desktopRumbleApiUrl),
+        streamerbotEndpoint: elements.streamerbotEndpoint.value,
+        minimizeToTrayOnExit: Boolean(elements.minimizeToTrayOnExit.checked),
         muteHotkey: elements.muteHotkey.value,
         customVoices: normalizeCustomVoices(desktopSettings?.customVoices),
         liveSettings: collectLiveSettingsFromForm()
@@ -1475,6 +1570,10 @@ function connectToTikFinity() {
   });
 
   socket.addEventListener("message", (event) => {
+    const giftEvent = parseTikFinityGiftEvent(event.data);
+    if (giftEvent) {
+      addGiftDonoEvent(giftEvent);
+    }
     const parsed = parseTikFinityMessage(event.data);
     if (parsed) {
       enqueueIncomingMessage(parsed);
@@ -1559,6 +1658,64 @@ async function connectToKick() {
   }
 }
 
+function connectToStreamerbot() {
+  if (streamerbotConnectInFlight || streamerbotSocket?.readyState === WebSocket.OPEN || streamerbotSocket?.readyState === WebSocket.CONNECTING) {
+    return;
+  }
+
+  const endpoint = normalizeStreamerbotEndpoint(elements.streamerbotEndpoint?.value || desktopSettings?.streamerbotEndpoint);
+  try {
+    streamerbotConnectInFlight = true;
+    elements.streamerbotStatus.textContent = "Connecting";
+    updateLiveStatusStrip();
+
+    const socket = new WebSocket(endpoint);
+    streamerbotSocket = socket;
+
+    socket.addEventListener("open", () => {
+      streamerbotConnectInFlight = false;
+      socket.send(JSON.stringify({
+        request: "Subscribe",
+        id: `streamlabs-donation-${Date.now()}`,
+        events: {
+          Streamlabs: ["Donation"]
+        }
+      }));
+      setFeedback("Connected to Streamer.bot. Listening for Streamlabs donations.", false, true);
+      updateLiveStatusStrip();
+      refreshConnectionControls();
+    });
+
+    socket.addEventListener("message", (event) => {
+      const parsed = parseStreamerbotDonationEvent(event.data);
+      if (parsed) {
+        addGiftDonoEvent(parsed);
+      }
+    });
+
+    socket.addEventListener("close", () => {
+      streamerbotConnectInFlight = false;
+      if (streamerbotSocket === socket) {
+        streamerbotSocket = null;
+      }
+      updateLiveStatusStrip();
+      refreshConnectionControls();
+      scheduleReconnect();
+    });
+
+    socket.addEventListener("error", () => {
+      streamerbotConnectInFlight = false;
+      setFeedback(`Streamer.bot connection failed. Check that WebSocket Server is running at ${endpoint}.`, true);
+      updateLiveStatusStrip();
+      refreshConnectionControls();
+      scheduleReconnect();
+    });
+  } catch (error) {
+    streamerbotConnectInFlight = false;
+    setFeedback(error.message, true);
+  }
+}
+
 function parseKickMessage(rawMessage) {
   const payload = safeJsonParse(rawMessage);
   if (!payload || String(payload.event || "").includes("pusher:")) {
@@ -1580,7 +1737,9 @@ function parseKickMessage(rawMessage) {
     id: String(messageData.id || messageData.message_id || data.id || data.message_id || `kick:${normalizeViewerId(user)}:${normalizeMessageFingerprint(message)}`),
     user,
     message,
-    source: "Kick"
+    source: "Kick",
+    roles: extractKickRoles(sender, messageData, data),
+    badges: extractKickBadges(sender, messageData, data)
   };
 }
 
@@ -1644,7 +1803,8 @@ function parseYoutubeMessage(item) {
     id: String(item.id || createClientId()),
     user,
     message,
-    source: "YouTube"
+    source: "YouTube",
+    roles: extractYoutubeRoles(item?.authorDetails || {})
   };
 }
 
@@ -1702,7 +1862,8 @@ function parseRumbleMessages(data) {
           id: String(item.id || item.created_on || `${user}:${message}`),
           user,
           message,
-          source: "Rumble"
+          source: "Rumble",
+          roles: normalizeRoleList(item.roles || item.badges || item.user_badges)
         });
       }
     }
@@ -1742,6 +1903,11 @@ function disconnectChat(showMessage = true) {
     window.clearTimeout(rumblePollTimer);
     rumblePollTimer = null;
   }
+  if (streamerbotSocket) {
+    streamerbotSocket.close();
+    streamerbotSocket = null;
+  }
+  streamerbotConnectInFlight = false;
   rumbleSeenMessages.clear();
   recentIncomingMessages.clear();
   refreshConnectionControls();
@@ -1796,7 +1962,15 @@ function parsePrivmsg(line) {
     return null;
   }
 
-  return { id: tags.id || createClientId(), user, message: message.trim(), source: "Twitch" };
+  return {
+    id: tags.id || createClientId(),
+    user,
+    message: message.trim(),
+    source: "Twitch",
+    roles: extractTwitchRoles(tags, user),
+    badges: parseTwitchBadges(tags.badges),
+    color: normalizeChatColor(tags.color)
+  };
 }
 
 function parseTags(tagSection) {
@@ -1809,6 +1983,153 @@ function parseTags(tagSection) {
     tags[key] = value;
   }
   return tags;
+}
+
+function parseTwitchBadges(value) {
+  return String(value || "")
+    .split(",")
+    .map((badge) => badge.split("/")[0].trim())
+    .filter(Boolean);
+}
+
+function extractTwitchRoles(tags, user) {
+  const badges = parseTwitchBadges(tags.badges);
+  const roles = [];
+  if (badges.includes("broadcaster") || normalizeViewerId(user) === normalizeViewerId(currentChannel)) roles.push("broadcaster");
+  if (tags.mod === "1" || badges.includes("moderator")) roles.push("moderator");
+  if (tags.subscriber === "1" || badges.includes("subscriber") || badges.includes("founder")) roles.push("subscriber");
+  if (badges.includes("vip")) roles.push("vip");
+  return roles;
+}
+
+function extractTikTokRoles(data, messageType, user) {
+  const roles = [];
+  if (inferTikTokModeratorState(data)) roles.push("moderator");
+  if (inferTikTokFollowerState(data, messageType, user)) roles.push("follower");
+  if (inferTikTokGifterState(data, messageType, user)) roles.push("gifter");
+  return roles;
+}
+
+function extractYoutubeRoles(authorDetails) {
+  const roles = [];
+  if (authorDetails.isChatOwner) roles.push("owner");
+  if (authorDetails.isChatModerator) roles.push("moderator");
+  if (authorDetails.isChatSponsor) roles.push("member");
+  if (authorDetails.isVerified) roles.push("verified");
+  return roles;
+}
+
+function extractKickRoles(...sources) {
+  const roles = [];
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    if (source.is_broadcaster || source.isBroadcaster) roles.push("broadcaster");
+    if (source.is_moderator || source.isModerator || source.moderator) roles.push("moderator");
+    if (source.is_subscriber || source.isSubscriber || source.subscriber) roles.push("subscriber");
+    if (source.is_vip || source.isVip || source.vip) roles.push("vip");
+  }
+  return [...new Set([...roles, ...extractKickBadges(...sources).filter((badge) => ["broadcaster", "moderator", "subscriber", "vip"].includes(badge))])];
+}
+
+function extractKickBadges(...sources) {
+  const badges = [];
+  for (const source of sources) {
+    collectRoleLikeValues(source?.badges, badges);
+    collectRoleLikeValues(source?.identity?.badges, badges);
+    collectRoleLikeValues(source?.sender_badges, badges);
+  }
+  return [...new Set(badges)];
+}
+
+function collectRoleLikeValues(value, output) {
+  if (!value) return;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item === "string") {
+        output.push(item.toLowerCase());
+      } else if (item && typeof item === "object") {
+        collectRoleLikeValues(item.type || item.name || item.text || item.title, output);
+      }
+    }
+    return;
+  }
+  if (typeof value === "object") {
+    for (const item of Object.values(value)) collectRoleLikeValues(item, output);
+    return;
+  }
+  output.push(String(value).toLowerCase());
+}
+
+function normalizeRoleList(value) {
+  const roles = [];
+  collectRoleLikeValues(value, roles);
+  return [...new Set(roles)];
+}
+
+function parseTikFinityGiftEvent(rawMessage) {
+  const payload = safeJsonParse(rawMessage);
+  if (!payload) {
+    return null;
+  }
+  const messageType = String(payload.event || payload.type || payload.name || payload.eventName || payload.topic || "").toLowerCase();
+  const data = payload.data && typeof payload.data === "object" ? payload.data : payload;
+  const giftName = coerceTikTokText(
+    data.giftName || data.gift?.name || data.gift?.giftName || data.giftInfo?.giftName || data.extendedGiftInfo?.giftName || data.name
+  );
+  const hasGiftShape = Boolean(giftName || data.giftId || data.gift_id || data.diamondCount || data.diamond_count || data.repeatCount || data.repeat_count);
+  if (!messageType.includes("gift") && !hasGiftShape) {
+    return null;
+  }
+
+  const user = extractTikTokUser(data) || "TikTok viewer";
+  const quantity = Number(data.repeatCount || data.repeat_count || data.giftCount || data.count || data.amount || 1) || 1;
+  const diamonds = Number(data.diamondCount || data.diamond_count || data.diamonds || data.gift?.diamondCount || 0) || 0;
+  const totalDiamonds = diamonds > 0 ? diamonds * quantity : 0;
+  return {
+    id: String(data.msgId || data.messageId || data.giftId || `${normalizeViewerId(user)}:${giftName}:${quantity}:${Date.now()}`),
+    source: "TikTok",
+    type: "Gift",
+    user,
+    title: giftName || "TikTok gift",
+    amount: totalDiamonds ? `${totalDiamonds.toLocaleString()} diamonds` : "",
+    quantity,
+    message: coerceTikTokText(data.comment || data.message || data.text)
+  };
+}
+
+function parseStreamerbotDonationEvent(rawMessage) {
+  const payload = safeJsonParse(rawMessage);
+  if (!payload) {
+    return null;
+  }
+  const eventSource = String(payload.event?.source || payload.source || "").toLowerCase();
+  const eventType = String(payload.event?.type || payload.type || "").toLowerCase();
+  if (eventSource !== "streamlabs" || eventType !== "donation") {
+    return null;
+  }
+
+  const data = payload.data && typeof payload.data === "object" ? payload.data : payload;
+  const user = coerceTikTokText(data.donationFrom || data.from || data.name || data.username || data.user || data.displayName) || "Streamlabs donor";
+  const formattedAmount = coerceTikTokText(data.donationFormattedAmount || data.formattedAmount || data.formatted_amount);
+  const amount = formattedAmount || formatDonationAmount(data.donationAmount ?? data.amount, data.donationCurrency || data.currency);
+  return {
+    id: String(data.id || data.messageId || data.donationId || `${normalizeViewerId(user)}:${amount}:${Date.now()}`),
+    source: "Streamlabs",
+    type: "Donation",
+    user,
+    title: "Streamlabs donation",
+    amount,
+    message: coerceTikTokText(data.donationMessage || data.message || data.comment)
+  };
+}
+
+function formatDonationAmount(amount, currency) {
+  const numericAmount = Number(amount);
+  const currencyCode = String(currency || "").trim().toUpperCase();
+  if (!Number.isFinite(numericAmount)) {
+    return coerceTikTokText(amount);
+  }
+  return currencyCode ? `${currencyCode} ${numericAmount.toFixed(2)}` : numericAmount.toFixed(2);
 }
 
 function parseTikFinityMessage(rawMessage) {
@@ -1842,7 +2163,8 @@ function parseTikFinityMessage(rawMessage) {
     user,
     message: comment.trim(),
     source: "TikTok",
-    isFollower: inferTikTokFollowerState(data, messageType, user) || inferTikTokModeratorState(data) || inferTikTokGifterState(data, messageType, user)
+    isFollower: inferTikTokFollowerState(data, messageType, user) || inferTikTokModeratorState(data) || inferTikTokGifterState(data, messageType, user),
+    roles: extractTikTokRoles(data, messageType, user)
   };
 }
 
@@ -1962,11 +2284,13 @@ function safeJsonParse(value) {
 }
 
 function enqueueIncomingMessage(entry) {
-  if (browserSourceOwnsPlayback) {
+  if (isDuplicateIncomingMessage(entry)) {
     return;
   }
 
-  if (isDuplicateIncomingMessage(entry)) {
+  addCombinedChatMessage(entry);
+
+  if (browserSourceOwnsPlayback) {
     return;
   }
 
@@ -2560,6 +2884,272 @@ function renderQueue() {
   }
 }
 
+function addCombinedChatMessage(entry) {
+  const message = normalizeCombinedChatMessage(entry);
+  combinedChatMessages.push(message);
+  while (combinedChatMessages.length > MAX_CLIENT_CHAT_HISTORY) {
+    combinedChatMessages.shift();
+  }
+  renderCombinedChat();
+  broadcastCombinedChatMessage(message);
+}
+
+function normalizeCombinedChatMessage(entry) {
+  return {
+    id: String(entry?.id || createClientId()),
+    user: String(entry?.user || "Chat").trim() || "Chat",
+    message: String(entry?.message || "").trim(),
+    source: String(entry?.source || "Live").trim() || "Live",
+    roles: Array.isArray(entry?.roles) ? [...new Set(entry.roles.map((role) => String(role).trim()).filter(Boolean))] : [],
+    badges: Array.isArray(entry?.badges) ? [...new Set(entry.badges.map((badge) => String(badge).trim()).filter(Boolean))] : [],
+    color: normalizeChatColor(entry?.color),
+    createdAt: entry?.createdAt ? new Date(entry.createdAt).toISOString() : new Date().toISOString()
+  };
+}
+
+function renderCombinedChat() {
+  if (!elements.combinedChatList) {
+    return;
+  }
+  elements.combinedChatCount.textContent = `${combinedChatMessages.length} ${combinedChatMessages.length === 1 ? "message" : "messages"}`;
+  if (!combinedChatMessages.length) {
+    elements.combinedChatList.innerHTML = '<li class="combined-chat-empty">Connect live chat sources to see every platform in one feed.</li>';
+    return;
+  }
+
+  elements.combinedChatList.innerHTML = "";
+  for (const message of combinedChatMessages.slice(-200)) {
+    elements.combinedChatList.append(createCombinedChatItem(message));
+  }
+  elements.combinedChatList.scrollTop = elements.combinedChatList.scrollHeight;
+}
+
+function createCombinedChatItem(message) {
+  const item = document.createElement("li");
+  item.className = `combined-chat-message source-${message.source.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const meta = document.createElement("div");
+  meta.className = "combined-chat-meta";
+
+  const source = document.createElement("span");
+  source.className = "combined-chat-source";
+  source.title = message.source;
+  source.setAttribute("aria-label", message.source);
+  const sourceLogo = getPlatformLogo(message.source);
+  if (sourceLogo) {
+    const image = document.createElement("img");
+    image.src = sourceLogo;
+    image.alt = "";
+    source.append(image);
+  } else {
+    source.textContent = message.source;
+  }
+  meta.append(source);
+
+  const time = document.createElement("time");
+  time.dateTime = message.createdAt;
+  time.textContent = new Date(message.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  meta.append(time);
+
+  const body = document.createElement("div");
+  body.className = "combined-chat-body";
+  const username = document.createElement("strong");
+  username.className = "combined-chat-user";
+  username.textContent = message.user;
+  if (message.color) {
+    username.style.color = message.color;
+  }
+  body.append(username);
+
+  const badges = getDisplayChatBadges(message).slice(0, 2);
+  for (const badge of badges) {
+    const badgeElement = document.createElement("span");
+    badgeElement.className = "combined-chat-badge";
+    badgeElement.textContent = formatChatBadge(badge);
+    body.append(badgeElement);
+  }
+
+  const text = document.createElement("span");
+  text.className = "combined-chat-text";
+  text.textContent = message.message;
+  body.append(text);
+
+  item.append(meta, body);
+  return item;
+}
+
+function clearCombinedChat() {
+  combinedChatMessages.length = 0;
+  renderCombinedChat();
+  broadcastCombinedChatState();
+}
+
+function broadcastCombinedChatMessage(message) {
+  combinedChatChannel?.postMessage({ type: "chat-message", message });
+}
+
+function broadcastCombinedChatState() {
+  combinedChatChannel?.postMessage({ type: "chat-state", messages: combinedChatMessages.slice(-MAX_CLIENT_CHAT_HISTORY) });
+}
+
+function formatChatBadge(value) {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized === "moderator" || normalized === "mod") {
+    return "MOD";
+  }
+  if (normalized === "subscriber" || normalized === "sub") {
+    return "SUB";
+  }
+  return String(value || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .slice(0, 18);
+}
+
+function getDisplayChatBadges(message) {
+  const values = [...(message.roles || []), ...(message.badges || [])]
+    .map((value) => String(value || "").toLowerCase().replace(/[^a-z]/g, ""))
+    .filter(Boolean);
+  const badges = [];
+  if (values.some((value) => value === "moderator" || value === "mod")) {
+    badges.push("moderator");
+  }
+  if (values.some((value) => value === "subscriber" || value === "sub" || value === "founder" || value === "member" || value === "sponsor")) {
+    badges.push("subscriber");
+  }
+  return badges;
+}
+
+function getPlatformLogo(source) {
+  const key = String(source || "").toLowerCase();
+  if (key === "twitch") return "/platform-twitch.webp";
+  if (key === "tiktok") return "/platform-tiktok.png";
+  if (key === "kick") return "/platform-kick.webp";
+  if (key === "youtube") return "/platform-youtube.webp";
+  if (key === "rumble") return "/platform-rumble.webp";
+  return "";
+}
+
+function normalizeChatColor(value) {
+  const color = String(value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : "";
+}
+
+function normalizeStreamerbotEndpoint(value) {
+  const endpoint = String(value || "ws://127.0.0.1:8080/").trim();
+  if (!endpoint) {
+    return "ws://127.0.0.1:8080/";
+  }
+  if (/^wss?:\/\//i.test(endpoint)) {
+    return endpoint;
+  }
+  return `ws://${endpoint.replace(/^\/+/, "")}`;
+}
+
+function addGiftDonoEvent(entry) {
+  const event = normalizeGiftDonoEvent(entry);
+  if (!event.id || giftDonoEvents.some((item) => item.id === event.id)) {
+    return;
+  }
+  giftDonoEvents.push(event);
+  while (giftDonoEvents.length > MAX_CLIENT_CHAT_HISTORY) {
+    giftDonoEvents.shift();
+  }
+  renderGiftDonoEvents();
+  broadcastGiftDonoEvent(event);
+}
+
+function normalizeGiftDonoEvent(entry) {
+  return {
+    id: String(entry?.id || createClientId()),
+    source: String(entry?.source || "Live").trim() || "Live",
+    type: String(entry?.type || "Gift").trim() || "Gift",
+    user: String(entry?.user || "Someone").trim() || "Someone",
+    title: String(entry?.title || entry?.giftName || entry?.type || "Support").trim() || "Support",
+    amount: String(entry?.amount || "").trim(),
+    quantity: Math.max(1, Number(entry?.quantity) || 1),
+    message: String(entry?.message || "").trim(),
+    createdAt: entry?.createdAt ? new Date(entry.createdAt).toISOString() : new Date().toISOString()
+  };
+}
+
+function renderGiftDonoEvents() {
+  if (!elements.giftDonoList) {
+    return;
+  }
+  elements.giftDonoCount.textContent = `${giftDonoEvents.length} ${giftDonoEvents.length === 1 ? "event" : "events"}`;
+  if (!giftDonoEvents.length) {
+    elements.giftDonoList.innerHTML = '<li class="gift-dono-empty">TikTok gifts and Streamlabs donations will appear here.</li>';
+    return;
+  }
+  elements.giftDonoList.innerHTML = "";
+  for (const event of giftDonoEvents.slice(-200).reverse()) {
+    elements.giftDonoList.append(createGiftDonoItem(event));
+  }
+}
+
+function createGiftDonoItem(event) {
+  const item = document.createElement("li");
+  item.className = `gift-dono-item source-${event.source.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+
+  const source = document.createElement("span");
+  source.className = "gift-dono-source";
+  source.title = event.source;
+  const sourceLogo = getPlatformLogo(event.source === "Streamlabs" ? "Streamerbot" : event.source) || getPlatformLogo(event.source);
+  if (sourceLogo) {
+    const image = document.createElement("img");
+    image.src = sourceLogo;
+    image.alt = "";
+    source.append(image);
+  } else {
+    source.textContent = event.source.slice(0, 2).toUpperCase();
+  }
+
+  const body = document.createElement("div");
+  body.className = "gift-dono-body";
+  const top = document.createElement("div");
+  top.className = "gift-dono-top";
+  const user = document.createElement("strong");
+  user.textContent = event.user;
+  const type = document.createElement("span");
+  type.className = "gift-dono-type";
+  type.textContent = event.type.toUpperCase();
+  top.append(user, type);
+
+  const detail = document.createElement("p");
+  const amount = event.amount ? ` - ${event.amount}` : "";
+  const quantity = event.quantity > 1 ? ` x${event.quantity}` : "";
+  detail.textContent = `${event.title}${quantity}${amount}`;
+  body.append(top, detail);
+
+  if (event.message) {
+    const message = document.createElement("p");
+    message.className = "gift-dono-message";
+    message.textContent = event.message;
+    body.append(message);
+  }
+
+  const time = document.createElement("time");
+  time.dateTime = event.createdAt;
+  time.textContent = new Date(event.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+  item.append(source, body, time);
+  return item;
+}
+
+function clearGiftDonoEvents() {
+  giftDonoEvents.length = 0;
+  renderGiftDonoEvents();
+  broadcastGiftDonoState();
+}
+
+function broadcastGiftDonoEvent(event) {
+  giftDonoChannel?.postMessage({ type: "gift-dono-event", event });
+}
+
+function broadcastGiftDonoState() {
+  giftDonoChannel?.postMessage({ type: "gift-dono-state", events: giftDonoEvents.slice(-MAX_CLIENT_CHAT_HISTORY) });
+}
+
 function toggleRecentMessages() {
   recentExpanded = !recentExpanded;
   renderQueue();
@@ -3004,6 +3594,7 @@ function applyLiveSettingsToForm(settings) {
   elements.kickSourceEnabled.checked = next.kickSourceEnabled;
   elements.youtubeSourceEnabled.checked = next.youtubeSourceEnabled;
   elements.rumbleSourceEnabled.checked = next.rumbleSourceEnabled;
+  elements.streamerbotSourceEnabled.checked = next.streamerbotSourceEnabled;
   elements.ttsProvider.value = next.ttsProvider;
   elements.ttsProviderMode.value = next.ttsProviderMode;
   elements.twitchTtsProvider.value = next.sourceTtsProviders.Twitch;
@@ -3131,6 +3722,7 @@ function collectLiveSettingsFromForm() {
     kickSourceEnabled: elements.kickSourceEnabled.checked,
     youtubeSourceEnabled: elements.youtubeSourceEnabled.checked,
     rumbleSourceEnabled: elements.rumbleSourceEnabled.checked,
+    streamerbotSourceEnabled: elements.streamerbotSourceEnabled.checked,
     ttsProvider: elements.ttsProvider.value,
     ttsProviderMode: elements.ttsProviderMode.value,
     sourceTtsProviders: {
@@ -3243,6 +3835,7 @@ function normalizeLiveSettings(settings) {
     kickSourceEnabled: Boolean(source.kickSourceEnabled ?? DEFAULT_LIVE_SETTINGS.kickSourceEnabled),
     youtubeSourceEnabled: Boolean(source.youtubeSourceEnabled ?? DEFAULT_LIVE_SETTINGS.youtubeSourceEnabled),
     rumbleSourceEnabled: Boolean(source.rumbleSourceEnabled ?? DEFAULT_LIVE_SETTINGS.rumbleSourceEnabled),
+    streamerbotSourceEnabled: Boolean(source.streamerbotSourceEnabled ?? DEFAULT_LIVE_SETTINGS.streamerbotSourceEnabled),
     ttsProvider,
     ttsProviderMode,
     sourceTtsProviders,
@@ -3385,6 +3978,11 @@ function reconcileDisabledSources(liveSettings) {
   if (!liveSettings.rumbleSourceEnabled && rumblePollTimer) {
     window.clearTimeout(rumblePollTimer);
     rumblePollTimer = null;
+  }
+  if (!liveSettings.streamerbotSourceEnabled && streamerbotSocket) {
+    streamerbotSocket.close();
+    streamerbotSocket = null;
+    streamerbotConnectInFlight = false;
   }
 }
 
@@ -3559,7 +4157,8 @@ async function ensureDesiredLiveState({ silent = false, forceRefresh = false } =
     liveSettings.tiktokSourceEnabled ||
     liveSettings.kickSourceEnabled ||
     liveSettings.youtubeSourceEnabled ||
-    liveSettings.rumbleSourceEnabled;
+    liveSettings.rumbleSourceEnabled ||
+    liveSettings.streamerbotSourceEnabled;
   if (!wantsAnyLiveSource) {
     disconnectChat(false);
     if (!silent) {
@@ -3601,18 +4200,21 @@ async function ensureDesiredLiveState({ silent = false, forceRefresh = false } =
   const needsKick = liveSettings.kickSourceEnabled;
   const needsYoutube = liveSettings.youtubeSourceEnabled;
   const needsRumble = liveSettings.rumbleSourceEnabled;
+  const needsStreamerbot = liveSettings.streamerbotSourceEnabled;
   const twitchMatches = !needsTwitch || (twitchSocket && currentChannel === channel);
   const tiktokMatches = !needsTikTok || Boolean(tiktokSocket);
   const kickMatches = !needsKick || Boolean(kickSocket) || kickConnectInFlight;
   const youtubeMatches = !needsYoutube || Boolean(youtubePollTimer);
   const rumbleMatches = !needsRumble || Boolean(rumblePollTimer);
+  const streamerbotMatches = !needsStreamerbot || Boolean(streamerbotSocket) || streamerbotConnectInFlight;
   const hasUnexpectedSources = (!needsTwitch && twitchSocket) ||
     (!needsTikTok && tiktokSocket) ||
     (!needsKick && kickSocket) ||
     (!needsYoutube && youtubePollTimer) ||
-    (!needsRumble && rumblePollTimer);
+    (!needsRumble && rumblePollTimer) ||
+    (!needsStreamerbot && streamerbotSocket);
 
-  if (!twitchMatches || !tiktokMatches || !kickMatches || !youtubeMatches || !rumbleMatches || hasUnexpectedSources) {
+  if (!twitchMatches || !tiktokMatches || !kickMatches || !youtubeMatches || !rumbleMatches || !streamerbotMatches || hasUnexpectedSources) {
     disconnectChat(false);
     elements.connectButton.disabled = true;
 
@@ -3630,6 +4232,9 @@ async function ensureDesiredLiveState({ silent = false, forceRefresh = false } =
     }
     if (needsRumble) {
       startRumblePolling();
+    }
+    if (needsStreamerbot) {
+      connectToStreamerbot();
     }
 
     if (!silent) {
@@ -3652,7 +4257,8 @@ function shouldAutoReconnect() {
     liveSettings.tiktokSourceEnabled ||
     liveSettings.kickSourceEnabled ||
     liveSettings.youtubeSourceEnabled ||
-    liveSettings.rumbleSourceEnabled);
+    liveSettings.rumbleSourceEnabled ||
+    liveSettings.streamerbotSourceEnabled);
 }
 
 function scheduleReconnect() {
@@ -3890,7 +4496,7 @@ function saveChannel(channel) {
 }
 
 function hasActiveConnection() {
-  return Boolean(twitchSocket || tiktokSocket || kickSocket || youtubePollTimer || rumblePollTimer);
+  return Boolean(twitchSocket || tiktokSocket || kickSocket || youtubePollTimer || rumblePollTimer || streamerbotSocket);
 }
 
 function isFollowerMessage(entry) {

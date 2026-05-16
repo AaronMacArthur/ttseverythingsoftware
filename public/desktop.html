@@ -34,6 +34,8 @@
         </div>
         <div class="rail-group">
           <button class="rail-page-button is-active" type="button" data-page-target="live">Live Setup</button>
+          <button class="rail-page-button" type="button" data-page-target="chat">All Chats</button>
+          <button class="rail-page-button" type="button" data-page-target="gifts">Gifts/Donos</button>
           <button class="rail-page-button" type="button" data-page-target="tts">TTS & Voices</button>
           <button class="rail-page-button" type="button" data-page-target="moderation">Moderation</button>
           <button class="rail-page-button" type="button" data-page-target="playback">Playback</button>
@@ -77,6 +79,10 @@
           <div class="status-tile">
             <span>Rumble</span>
             <strong id="rumbleStatus">Off</strong>
+          </div>
+          <div class="status-tile">
+            <span>Streamer.bot</span>
+            <strong id="streamerbotStatus">Off</strong>
           </div>
           <div class="status-tile">
             <span>Playback</span>
@@ -157,6 +163,18 @@
                     <input id="desktopRumbleApiUrl" type="password" autocomplete="off" placeholder="https://rumble.com/-livestream-api/..." />
                   </label>
                 </article>
+
+                <article class="source-card">
+                  <label class="switch-line">
+                    <input id="streamerbotSourceEnabled" type="checkbox" />
+                    <span>Read Streamlabs donations via Streamer.bot</span>
+                  </label>
+                  <label class="field" data-source-section="streamerbot">
+                    <span>Streamer.bot WebSocket URL</span>
+                    <input id="streamerbotEndpoint" type="text" placeholder="ws://127.0.0.1:8080/" />
+                    <small>Enable Streamer.bot WebSocket Server, then this subscribes to Streamlabs.Donation.</small>
+                  </label>
+                </article>
               </div>
             </form>
             <div class="toolbar-row">
@@ -197,6 +215,38 @@
             <ul id="queueList" class="queue-list">
               <li class="queue-empty">No spoken messages yet.</li>
             </ul>
+          </section>
+
+          <section id="combinedChatPanel" class="panel wide desktop-page-panel" data-page="chat">
+            <div class="panel-title">
+              <span>All chats</span>
+              <div class="command-actions">
+                <strong id="combinedChatCount">0 messages</strong>
+                <button class="ghost-button" id="clearCombinedChatButton" type="button">Clear</button>
+                <button class="primary-button" id="popoutCombinedChatButton" type="button">Pop out</button>
+              </div>
+            </div>
+            <div class="combined-chat-shell">
+              <ol id="combinedChatList" class="combined-chat-list" aria-live="polite">
+                <li class="combined-chat-empty">Connect live chat sources to see every platform in one feed.</li>
+              </ol>
+            </div>
+          </section>
+
+          <section id="giftDonoPanel" class="panel wide desktop-page-panel" data-page="gifts">
+            <div class="panel-title">
+              <span>Gifts and donos</span>
+              <div class="command-actions">
+                <strong id="giftDonoCount">0 events</strong>
+                <button class="ghost-button" id="clearGiftDonoButton" type="button">Clear</button>
+                <button class="primary-button" id="popoutGiftDonoButton" type="button">Pop out</button>
+              </div>
+            </div>
+            <div class="gift-dono-shell">
+              <ol id="giftDonoList" class="gift-dono-list" aria-live="polite">
+                <li class="gift-dono-empty">TikTok gifts and Streamlabs donations will appear here.</li>
+              </ol>
+            </div>
           </section>
 
           <section id="settings" class="panel wide desktop-page-panel" data-page="tts">
@@ -505,6 +555,19 @@
                 <small id="muteHotkeyStatus">Works even when this app is not focused.</small>
               </label>
               <button class="danger-button" id="toggleMuteButton" type="button">Mute TTS now</button>
+            </div>
+          </section>
+
+          <section class="panel desktop-page-panel" data-page="playback">
+            <div class="panel-title">
+              <span>Window behavior</span>
+              <strong>Desktop</strong>
+            </div>
+            <div class="form-grid one">
+              <label class="switch-line full">
+                <input id="minimizeToTrayOnExit" type="checkbox" />
+                <span>When exiting the app, minimize to tray instead</span>
+              </label>
             </div>
           </section>
 

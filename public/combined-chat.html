@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TTS Everything Chat</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/desktop.css" />
+    <script src="/combined-chat.js" defer></script>
+  </head>
+  <body class="combined-chat-popout">
+    <header class="chat-popout-header">
+      <div>
+        <span>All chats</span>
+        <strong id="popoutChatCount">0 messages</strong>
+      </div>
+      <button id="pinChatWindowButton" class="ghost-button" type="button" aria-pressed="false">Pin</button>
+    </header>
+    <main class="combined-chat-shell popout-chat-shell">
+      <ol id="popoutCombinedChatList" class="combined-chat-list" aria-live="polite">
+        <li class="combined-chat-empty">Open the main app and connect live chat sources.</li>
+      </ol>
+    </main>
+  </body>
+</html>

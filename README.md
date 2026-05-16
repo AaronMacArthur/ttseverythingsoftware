@@ -1,30 +1,43 @@
-# TTS Everything (Software)
+# TTS Everything
 
-Desktop/live-stream TTS software for Twitch, TikTok Live, Kick, YouTube Live, and Rumble.
+Local desktop control software for multistream live TTS.
 
-This repository contains the software app source only. Local runtime data, logs, environment files, API keys, and dependencies are intentionally excluded.
+## Run
 
-## Setup
+Double-click `Start-TTSToTwitch-Desktop.bat`, or run:
 
 ```powershell
-npm install
-npm test
-npm start
+npm.cmd run desktop
 ```
 
-Create a local `.env` file from `.env.example` if you use optional provider keys. Never commit real API keys or secrets.
+The app stores local settings, including TTS provider API keys, in Electron app data on this computer.
 
-## Included
+## Gifts/Donos Feed
 
-- Electron desktop entry files
-- Local Node server
-- Dashboard and browser-source UI files
-- Static overlay assets
+TTS Everything includes a shared Gifts/Donos page that combines TikTok gifts and Streamlabs donations into one queue.
 
-## Excluded
+### TikTok Gifts
 
-- `node_modules/`
-- `.env` and local secrets
-- runtime `data/`
-- logs
-- packaged release/build folders
+Enable TikFinity in Live Setup and connect to the local TikFinity WebSocket endpoint. Gift events are parsed from the same TikFinity event stream used for TikTok chat and appear in the Gifts/Donos page and popout window.
+
+### Streamlabs Donations Through Streamer.bot
+
+No Streamlabs API key is required. Streamer.bot already listens to Streamlabs, so TTS Everything connects to Streamer.bot's local WebSocket server.
+
+1. In Streamer.bot, open `Servers/Clients > WebSocket Server`.
+2. Start the WebSocket server. The default endpoint is `ws://127.0.0.1:8080/`.
+3. In TTS Everything, enable `Read Streamlabs donations via Streamer.bot`.
+4. Keep the endpoint as `ws://127.0.0.1:8080/` unless you changed it in Streamer.bot.
+5. Open `Gifts/Donos` or use `Pop out` for a separate pinned window.
+
+The app subscribes to `Streamlabs.Donation` events and normalizes donor name, amount, currency, message, and timestamp for the shared queue.
+
+## Desktop Packaging
+
+Build the Windows installer with:
+
+```powershell
+npm.cmd run dist
+```
+
+The installer is written to `release/`. The app also has a Playback setting for `When exiting the app, minimize to tray instead`; when enabled, closing the window hides it to the tray and the tray menu can reopen or quit it.

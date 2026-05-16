@@ -5,10 +5,50 @@
   "main": "desktop-main.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --check server.js && node --check public/dashboard.js && node --check desktop-main.js && node --check desktop-preload.js"
+    "desktop": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis",
+    "test": "node --check server.js && node --check public/dashboard.js && node --check public/combined-chat.js && node --check public/gift-dono.js && node --check desktop-main.js && node --check desktop-preload.js"
+  },
+  "build": {
+    "appId": "com.ttseverything.desktop",
+    "productName": "TTS Everything",
+    "asar": false,
+    "files": [
+      "desktop-main.js",
+      "desktop-preload.js",
+      "server.js",
+      "cohostEngine.js",
+      "public/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TTS Everything"
+    },
+    "portable": {
+      "artifactName": "TTS Everything Portable ${version}.exe"
+    }
   },
   "dependencies": {
     "pg": "^8.20.0",
     "stripe": "^22.1.0"
+  },
+  "devDependencies": {
+    "electron": "^41.5.0",
+    "electron-builder": "^26.8.1"
   }
 }

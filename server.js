@@ -140,6 +140,7 @@ const DEFAULT_LIVE_SETTINGS = {
   kickSourceEnabled: false,
   youtubeSourceEnabled: false,
   rumbleSourceEnabled: false,
+  streamerbotSourceEnabled: false,
   ttsProvider: "elevenlabs",
   ttsProviderMode: "single",
   sourceTtsProviders: {
@@ -169,6 +170,7 @@ const MIME_TYPES = {
   ".mp3": "audio/mpeg",
   ".png": "image/png",
   ".svg": "image/svg+xml",
+  ".webp": "image/webp",
   ".txt": "text/plain; charset=utf-8",
   ".xml": "application/xml; charset=utf-8"
 };
@@ -449,6 +451,8 @@ function handleUpdateDesktopSettings(req, res, body) {
   desktopSettings.youtubeApiKey = getSubmittedSecret(body?.youtubeApiKey) || desktopSettings.youtubeApiKey || "";
   desktopSettings.youtubeLiveChatId = String(body?.youtubeLiveChatId || desktopSettings.youtubeLiveChatId || "").trim();
   desktopSettings.rumbleApiUrl = getSubmittedSecret(body?.rumbleApiUrl) || desktopSettings.rumbleApiUrl || "";
+  desktopSettings.streamerbotEndpoint = normalizeStreamerbotEndpoint(body?.streamerbotEndpoint || desktopSettings.streamerbotEndpoint);
+  desktopSettings.minimizeToTrayOnExit = Boolean(body?.minimizeToTrayOnExit);
   desktopSettings.muteHotkey = normalizeHotkey(body?.muteHotkey ?? desktopSettings.muteHotkey);
   if (body?.liveSettings && typeof body.liveSettings === "object") {
     user.liveSettings = sanitizeLiveSettings(body.liveSettings, { customVoices: desktopSettings.customVoices });
@@ -2465,6 +2469,8 @@ function getPublicDesktopSettings() {
     youtubeLiveChatId: String(settings.youtubeLiveChatId || ""),
     rumbleApiUrlConfigured: Boolean(settings.rumbleApiUrl),
     rumbleApiUrlMasked: settings.rumbleApiUrl ? SAVED_SECRET_MASK : "",
+    streamerbotEndpoint: normalizeStreamerbotEndpoint(settings.streamerbotEndpoint),
+    minimizeToTrayOnExit: Boolean(settings.minimizeToTrayOnExit),
     muteHotkey: normalizeHotkey(settings.muteHotkey),
     customVoices: sanitizeCustomVoices(settings.customVoices)
   };
@@ -2472,6 +2478,17 @@ function getPublicDesktopSettings() {
 
 function normalizeHotkey(value) {
   return String(value || "").trim().slice(0, 80);
+}
+
+function normalizeStreamerbotEndpoint(value) {
+  const endpoint = String(value || "ws://127.0.0.1:8080/").trim().slice(0, 180);
+  if (!endpoint) {
+    return "ws://127.0.0.1:8080/";
+  }
+  if (/^wss?:\/\//i.test(endpoint)) {
+    return endpoint;
+  }
+  return `ws://${endpoint.replace(/^\/+/, "")}`;
 }
 
 function getSubmittedSecret(value) {
@@ -3023,6 +3040,7 @@ function sanitizeLiveSettings(settings, options = {}) {
     kickSourceEnabled: Boolean(source.kickSourceEnabled ?? DEFAULT_LIVE_SETTINGS.kickSourceEnabled),
     youtubeSourceEnabled: Boolean(source.youtubeSourceEnabled ?? DEFAULT_LIVE_SETTINGS.youtubeSourceEnabled),
     rumbleSourceEnabled: Boolean(source.rumbleSourceEnabled ?? DEFAULT_LIVE_SETTINGS.rumbleSourceEnabled),
+    streamerbotSourceEnabled: Boolean(source.streamerbotSourceEnabled ?? DEFAULT_LIVE_SETTINGS.streamerbotSourceEnabled),
     ttsProvider: provider,
     ttsProviderMode: providerMode,
     sourceTtsProviders,
