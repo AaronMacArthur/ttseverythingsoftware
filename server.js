@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
+const net = require("net");
 const { URL } = require("url");
 const Stripe = require("stripe");
 const { Pool } = require("pg");
@@ -39,7 +40,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 const DESKTOP_STDERR_LOG = process.env.DESKTOP_STDERR_LOG || "";
 const DESKTOP_STDOUT_LOG = process.env.DESKTOP_STDOUT_LOG || "";
-const TIKTOK_LIVE_PORT = Number(process.env.TIKTOK_LIVE_PORT || 21213);
+const DEFAULT_TIKTOK_LIVE_PORT = Number(process.env.TIKTOK_LIVE_PORT || 21213);
 const TIKTOK_HELPER_EXE = process.env.TIKTOK_HELPER_EXE || path.join(__dirname, "vendor", "tiktok", "TTSBridge.exe");
 const ADMIN_EMAIL = "aaron.macarthur1999@gmail.com";
 const MAX_TTS_QUEUE_LENGTH = Math.floor(clampEnvNumber("MAX_TTS_QUEUE_LENGTH", 1, 500, 50));
@@ -200,6 +201,7 @@ const cohostOverlayClients = new Set();
 let tiktokLiveProcess = null;
 let tiktokLiveLastError = "";
 let tiktokLiveLastStatus = null;
+let tiktokLivePort = DEFAULT_TIKTOK_LIVE_PORT;
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -548,7 +550,8 @@ async function handleTikTokLiveStart(req, res, body) {
   await stopTikTokLiveProcess();
   tiktokLiveLastError = "";
   tiktokLiveLastStatus = null;
-  tiktokLiveProcess = spawn(TIKTOK_HELPER_EXE, ["start", "--handle", handle, "--port", String(TIKTOK_LIVE_PORT)], {
+  tiktokLivePort = await findOpenPort(DEFAULT_TIKTOK_LIVE_PORT);
+  tiktokLiveProcess = spawn(TIKTOK_HELPER_EXE, ["start", "--handle", handle, "--port", String(tiktokLivePort)], {
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -571,8 +574,8 @@ async function handleTikTokLiveStart(req, res, body) {
 
   sendJson(res, 200, {
     ok: true,
-    port: TIKTOK_LIVE_PORT,
-    wsUrl: `ws://127.0.0.1:${TIKTOK_LIVE_PORT}/`,
+    port: tiktokLivePort,
+    wsUrl: `ws://127.0.0.1:${tiktokLivePort}/`,
     status: await getTikTokLiveStatus()
   });
 }
@@ -588,7 +591,7 @@ async function handleTikTokLiveStatus(req, res) {
   sendJson(res, 200, {
     ok: true,
     running: Boolean(tiktokLiveProcess),
-    port: TIKTOK_LIVE_PORT,
+    port: tiktokLivePort,
     helperAvailable: fs.existsSync(TIKTOK_HELPER_EXE),
     status: await getTikTokLiveStatus().catch(() => tiktokLiveLastStatus),
     lastError: tiktokLiveLastError
@@ -1202,7 +1205,7 @@ async function waitForTikTokLiveHealth(timeoutMs) {
   let lastError = null;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`http://127.0.0.1:${TIKTOK_LIVE_PORT}/health`, {
+      const response = await fetch(`http://127.0.0.1:${tiktokLivePort}/health`, {
         headers: { Accept: "application/json" },
         cache: "no-store"
       });
@@ -1221,7 +1224,7 @@ async function waitForTikTokLiveHealth(timeoutMs) {
 
 async function getTikTokLiveStatus() {
   try {
-    const response = await fetch(`http://127.0.0.1:${TIKTOK_LIVE_PORT}/status`, {
+    const response = await fetch(`http://127.0.0.1:${tiktokLivePort}/status`, {
       headers: { Accept: "application/json" },
       cache: "no-store"
     });
@@ -1251,6 +1254,26 @@ function stopTikTokLiveProcess() {
       resolve();
     });
     child.kill();
+  });
+}
+
+function findOpenPort(startPort) {
+  const firstPort = Math.max(1, Math.min(65535, Number(startPort) || 21213));
+  return new Promise((resolve, reject) => {
+    const tryPort = (port) => {
+      if (port > 65535) {
+        reject(createUserError(500, "No local port is available for TikTok Live."));
+        return;
+      }
+      const tester = net.createServer();
+      tester.unref();
+      tester.once("error", () => tryPort(port + 1));
+      tester.once("listening", () => {
+        tester.close(() => resolve(port));
+      });
+      tester.listen(port, "127.0.0.1");
+    };
+    tryPort(firstPort);
   });
 }
 
