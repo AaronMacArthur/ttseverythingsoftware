@@ -195,7 +195,7 @@ function connectLiveSources() {
   const wantsTwitch = Boolean(liveSettings.twitchSourceEnabled);
 
   if (!wantsTwitch) {
-    setStatus("Browser Source TTS is enabled, but Twitch is off. TikFinity is dashboard-only.");
+    setStatus("Browser Source TTS is enabled, but Twitch is off. TikTok Live is controlled from the dashboard.");
     return;
   }
 
@@ -287,16 +287,20 @@ function connectToTwitch(channel) {
   });
 }
 
-function connectToTikFinity() {
-  const socket = new WebSocket("ws://localhost:21213/");
+function connectToTikTokLive() {
+  const socket = new WebSocket("ws://127.0.0.1:21213/");
   state.tiktokSocket = socket;
 
   socket.addEventListener("open", () => {
-    setStatus("Connected to TikFinity. Waiting for TikTok Live comments...");
+    setStatus("Connected to TikTok Live. Waiting for chat messages...");
   });
 
   socket.addEventListener("message", (event) => {
-    const parsed = parseTikFinityMessage(event.data);
+    const payload = safeJsonParse(event.data);
+    if (!payload || payload.event !== "chat") {
+      return;
+    }
+    const parsed = parseTikTokLiveChatMessage(payload);
     if (parsed) {
       enqueueIncomingMessage(parsed);
     }
@@ -305,13 +309,13 @@ function connectToTikFinity() {
   socket.addEventListener("close", () => {
     if (state.tiktokSocket === socket) {
       state.tiktokSocket = null;
-      setStatus("TikFinity connection closed. Reconnecting...");
+      setStatus("TikTok Live connection closed. Reconnecting...");
       scheduleLiveReconnect();
     }
   });
 
   socket.addEventListener("error", () => {
-    setStatus("Unable to connect to TikFinity on ws://localhost:21213/. Make sure TikFinity is running locally.");
+    setStatus("Unable to connect to TikTok Live. Open the dashboard and connect TikTok Live first.");
     scheduleLiveReconnect();
   });
 }
@@ -361,39 +365,20 @@ function parseTags(tagSection) {
   return tags;
 }
 
-function parseTikFinityMessage(rawMessage) {
-  let payload;
-  try {
-    payload = JSON.parse(rawMessage);
-  } catch {
-    return null;
-  }
-
-  const messageType = String(payload.event || payload.type || payload.name || payload.eventName || payload.topic || "").toLowerCase();
-  const data = payload.data && typeof payload.data === "object" ? payload.data : payload;
-  if (messageType.includes("follow")) {
-    const followerUser = normalizeViewerId(extractTikTokUser(data));
-    if (followerUser) {
-      state.tiktokFollowers.add(followerUser);
-    }
-  }
-  const gifterEventUser = extractTikTokGifterEventUser(data, messageType);
-  if (gifterEventUser) {
-    state.tiktokGifters.add(gifterEventUser);
-  }
-
-  const comment = extractTikTokComment(data);
-  const user = extractTikTokUser(data);
+function parseTikTokLiveChatMessage(payload) {
+  const userData = payload.user && typeof payload.user === "object" ? payload.user : {};
+  const comment = coerceTikTokText(payload.message || payload.text || payload.content);
+  const user = coerceTikTokText(userData.displayName || userData.nickname || userData.uniqueId || userData.id) || "TikTok viewer";
   if (!comment || !user) {
     return null;
   }
 
   return {
-    id: String(data.commentId || data.msgId || data.messageId || data.id || createClientId()),
+    id: String(payload.id || createClientId()),
     user,
     message: comment.trim(),
     source: "TikTok",
-    isFollower: inferTikTokFollowerState(data, messageType, user) || inferTikTokGifterState(data, messageType, user)
+    isFollower: false
   };
 }
 

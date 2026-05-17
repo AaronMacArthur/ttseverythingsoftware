@@ -2,6 +2,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { spawn } = require("child_process");
 const { URL } = require("url");
 const Stripe = require("stripe");
 const { Pool } = require("pg");
@@ -38,6 +39,8 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 const DESKTOP_STDERR_LOG = process.env.DESKTOP_STDERR_LOG || "";
 const DESKTOP_STDOUT_LOG = process.env.DESKTOP_STDOUT_LOG || "";
+const TIKTOK_LIVE_PORT = Number(process.env.TIKTOK_LIVE_PORT || 21213);
+const TIKTOK_HELPER_EXE = process.env.TIKTOK_HELPER_EXE || path.join(__dirname, "vendor", "tiktok", "TTSBridge.exe");
 const ADMIN_EMAIL = "aaron.macarthur1999@gmail.com";
 const MAX_TTS_QUEUE_LENGTH = Math.floor(clampEnvNumber("MAX_TTS_QUEUE_LENGTH", 1, 500, 50));
 const MAX_CONCURRENT_TTS_JOBS = Math.floor(clampEnvNumber("MAX_CONCURRENT_TTS_JOBS", 1, 10, 2));
@@ -194,6 +197,9 @@ let obsPepeStatus = {
   updatedAt: ""
 };
 const cohostOverlayClients = new Set();
+let tiktokLiveProcess = null;
+let tiktokLiveLastError = "";
+let tiktokLiveLastStatus = null;
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -244,6 +250,23 @@ const server = http.createServer(async (req, res) => {
 
     if (DESKTOP_MODE && req.method === "POST" && requestUrl.pathname === "/api/desktop/reset") {
       return handleResetDesktopApp(req, res);
+    }
+
+    if (DESKTOP_MODE && req.method === "POST" && requestUrl.pathname === "/api/tiktok-live/auth") {
+      return await handleTikTokLiveAuth(req, res);
+    }
+
+    if (DESKTOP_MODE && req.method === "POST" && requestUrl.pathname === "/api/tiktok-live/start") {
+      const body = await readJsonBody(req);
+      return await handleTikTokLiveStart(req, res, body);
+    }
+
+    if (DESKTOP_MODE && req.method === "POST" && requestUrl.pathname === "/api/tiktok-live/stop") {
+      return await handleTikTokLiveStop(req, res);
+    }
+
+    if (DESKTOP_MODE && req.method === "GET" && requestUrl.pathname === "/api/tiktok-live/status") {
+      return await handleTikTokLiveStatus(req, res);
     }
 
     if (DESKTOP_MODE && req.method === "GET" && requestUrl.pathname === "/api/kick/chatroom") {
@@ -420,6 +443,12 @@ startServer().catch((error) => {
   process.exit(1);
 });
 
+process.once("exit", () => {
+  if (tiktokLiveProcess && !tiktokLiveProcess.killed) {
+    tiktokLiveProcess.kill();
+  }
+});
+
 async function startServer() {
   await ensureDataStore();
   if (DESKTOP_MODE) {
@@ -459,6 +488,7 @@ function handleUpdateDesktopSettings(req, res, body) {
   desktopSettings.youtubeLiveChatId = String(body?.youtubeLiveChatId || desktopSettings.youtubeLiveChatId || "").trim();
   desktopSettings.rumbleApiUrl = getSubmittedSecret(body?.rumbleApiUrl) || desktopSettings.rumbleApiUrl || "";
   desktopSettings.streamerbotEndpoint = normalizeStreamerbotEndpoint(body?.streamerbotEndpoint || desktopSettings.streamerbotEndpoint);
+  desktopSettings.tiktokUsername = normalizeTikTokHandle(body?.tiktokUsername ?? desktopSettings.tiktokUsername);
   desktopSettings.minimizeToTrayOnExit = Boolean(body?.minimizeToTrayOnExit);
   desktopSettings.muteHotkey = normalizeHotkey(body?.muteHotkey ?? desktopSettings.muteHotkey);
   if (body?.liveSettings && typeof body.liveSettings === "object") {
@@ -493,6 +523,76 @@ function handleResetDesktopApp(req, res) {
   const store = createEmptyStore();
   const user = ensureDesktopUser(store);
   return createSessionAndRespond(res, store, user);
+}
+
+async function handleTikTokLiveAuth(req, res) {
+  requireUser(req);
+  ensureTikTokHelperAvailable();
+  await stopTikTokLiveProcess();
+  const result = await runTikTokHelperOnce(["auth"], { timeoutMs: 10 * 60 * 1000 });
+  if (result.code !== 0) {
+    throw createUserError(502, sanitizeTikTokHelperError(result.stderr || result.stdout || "TikTok login did not complete."));
+  }
+  sendJson(res, 200, { ok: true, status: await getTikTokLiveStatus() });
+}
+
+async function handleTikTokLiveStart(req, res, body) {
+  requireUser(req);
+  ensureTikTokHelperAvailable();
+  const settings = readDesktopSettings();
+  const handle = normalizeTikTokHandle(body?.handle || body?.username || settings.tiktokUsername);
+  if (!handle) {
+    throw createUserError(400, "Enter a TikTok handle before connecting TikTok Live.");
+  }
+
+  await stopTikTokLiveProcess();
+  tiktokLiveLastError = "";
+  tiktokLiveLastStatus = null;
+  tiktokLiveProcess = spawn(TIKTOK_HELPER_EXE, ["start", "--handle", handle, "--port", String(TIKTOK_LIVE_PORT)], {
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  tiktokLiveProcess.stdout?.on("data", (chunk) => captureTikTokHelperOutput(chunk, false));
+  tiktokLiveProcess.stderr?.on("data", (chunk) => captureTikTokHelperOutput(chunk, true));
+  tiktokLiveProcess.once("exit", (code, signal) => {
+    if (tiktokLiveProcess) {
+      tiktokLiveLastError = tiktokLiveLastError || `TikTok Live helper exited (${signal || code}).`;
+    }
+    tiktokLiveProcess = null;
+  });
+
+  try {
+    await waitForTikTokLiveHealth(15_000);
+  } catch (error) {
+    await stopTikTokLiveProcess();
+    throw error;
+  }
+
+  sendJson(res, 200, {
+    ok: true,
+    port: TIKTOK_LIVE_PORT,
+    wsUrl: `ws://127.0.0.1:${TIKTOK_LIVE_PORT}/`,
+    status: await getTikTokLiveStatus()
+  });
+}
+
+async function handleTikTokLiveStop(req, res) {
+  requireUser(req);
+  await stopTikTokLiveProcess();
+  sendJson(res, 200, { ok: true });
+}
+
+async function handleTikTokLiveStatus(req, res) {
+  requireUser(req);
+  sendJson(res, 200, {
+    ok: true,
+    running: Boolean(tiktokLiveProcess),
+    port: TIKTOK_LIVE_PORT,
+    helperAvailable: fs.existsSync(TIKTOK_HELPER_EXE),
+    status: await getTikTokLiveStatus().catch(() => tiktokLiveLastStatus),
+    lastError: tiktokLiveLastError
+  });
 }
 
 async function handleKickChatroom(req, res, requestUrl) {
@@ -1040,6 +1140,129 @@ function sendSse(res, eventName, payload) {
   }
   res.write(`event: ${eventName}\n`);
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function ensureTikTokHelperAvailable() {
+  if (!fs.existsSync(TIKTOK_HELPER_EXE)) {
+    throw createUserError(500, "TikTok Live support is missing from this installation.");
+  }
+}
+
+function captureTikTokHelperOutput(chunk, isError) {
+  const text = sanitizeTikTokHelperError(String(chunk || "").trim());
+  if (!text) {
+    return;
+  }
+  if (isError) {
+    tiktokLiveLastError = text.slice(-1200);
+  }
+  const parsed = safeJsonParse(text);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    tiktokLiveLastStatus = parsed;
+  }
+}
+
+function runTikTokHelperOnce(args, options = {}) {
+  return new Promise((resolve, reject) => {
+    ensureTikTokHelperAvailable();
+    const child = spawn(TIKTOK_HELPER_EXE, args, {
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(createUserError(504, "TikTok login timed out."));
+    }, Number(options.timeoutMs) || 120000);
+
+    child.stdout?.on("data", (chunk) => {
+      stdout += sanitizeTikTokHelperError(String(chunk || ""));
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr += sanitizeTikTokHelperError(String(chunk || ""));
+    });
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("exit", (code) => {
+      clearTimeout(timer);
+      resolve({
+        code: Number(code || 0),
+        stdout: stdout.trim(),
+        stderr: stderr.trim()
+      });
+    });
+  });
+}
+
+async function waitForTikTokLiveHealth(timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${TIKTOK_LIVE_PORT}/health`, {
+        headers: { Accept: "application/json" },
+        cache: "no-store"
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data?.ok) {
+        return data;
+      }
+      lastError = new Error(data?.error || "TikTok Live is not ready yet.");
+    } catch (error) {
+      lastError = error;
+    }
+    await delay(350);
+  }
+  throw createUserError(504, sanitizeTikTokHelperError(tiktokLiveLastError || lastError?.message || "TikTok Live did not start in time."));
+}
+
+async function getTikTokLiveStatus() {
+  try {
+    const response = await fetch(`http://127.0.0.1:${TIKTOK_LIVE_PORT}/status`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store"
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok && data) {
+      tiktokLiveLastStatus = data;
+      return data;
+    }
+  } catch {}
+  return tiktokLiveLastStatus;
+}
+
+function stopTikTokLiveProcess() {
+  return new Promise((resolve) => {
+    const child = tiktokLiveProcess;
+    tiktokLiveProcess = null;
+    if (!child || child.killed) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve();
+    }, 2500);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    child.kill();
+  });
+}
+
+function sanitizeTikTokHelperError(value) {
+  return String(value || "")
+    .replace(/(token|session|cookie|csrf|verify|signature|bogus|fp)(["'=:\s]+)[^&\s"',}]+/gi, "$1$2[REDACTED]")
+    .replace(/(msToken|X-Bogus|verifyFp|s_v_web_id|sessionid|sid_tt|uid_tt|passport_csrf_token)=([^&\s]+)/gi, "$1=[REDACTED]")
+    .trim();
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function logDesktopServerError(error, req) {
@@ -2162,6 +2385,14 @@ function normalizeChannel(value) {
     .replace(/[^a-z0-9_]/g, "");
 }
 
+function normalizeTikTokHandle(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^@+/, "")
+    .replace(/[^\w.-]/g, "")
+    .slice(0, 80);
+}
+
 function toPublicUser(user) {
   const plan = getPlanById(user.planId);
   const remainingCharacters = DESKTOP_MODE
@@ -2490,6 +2721,7 @@ function getPublicDesktopSettings() {
     rumbleApiUrlConfigured: Boolean(settings.rumbleApiUrl),
     rumbleApiUrlMasked: settings.rumbleApiUrl ? SAVED_SECRET_MASK : "",
     streamerbotEndpoint: normalizeStreamerbotEndpoint(settings.streamerbotEndpoint),
+    tiktokUsername: normalizeTikTokHandle(settings.tiktokUsername),
     minimizeToTrayOnExit: Boolean(settings.minimizeToTrayOnExit),
     muteHotkey: normalizeHotkey(settings.muteHotkey),
     customVoices: sanitizeCustomVoices(settings.customVoices)

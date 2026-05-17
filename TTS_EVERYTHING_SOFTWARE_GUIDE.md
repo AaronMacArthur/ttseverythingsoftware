@@ -25,13 +25,12 @@ This is useful for streamers who:
 
 The All Chats window combines messages from supported platforms into one feed. It is styled to feel similar to Twitch chat, with platform icons, usernames, role badges, and message text.
 
-The chat window can be popped out into its own window and pinned on top. This is useful if the streamer wants to keep the combined chat visible while using OBS, a game, Streamer.bot, TikFinity, or other stream tools.
+The chat window can be popped out into its own window and pinned on top. This is useful if the streamer wants to keep the combined chat visible while using OBS, a game, Streamer.bot or other stream tools.
 
 ### Shared Gifts and Donations Feed
 
 The Gifts/Donos page collects monetary or gift-style events into a single list. The current implementation supports:
 
-- TikTok gifts through TikFinity.
 - Streamlabs donations through Streamer.bot.
 
 This gives the streamer one place to watch support events from multiple sources. The Gifts/Donos window can also be popped out and pinned.
@@ -48,13 +47,9 @@ Twitch chat is read directly by channel name. The streamer enters the Twitch cha
 
 ### TikTok Live
 
-TikTok integration uses TikFinity as the local event bridge. TTS Everything connects to the TikFinity WebSocket endpoint, normally:
+TikTok Live uses the app's local TikTok login and capture helper. The streamer enters a TikTok handle, enables TikTok Live, and logs in manually in the browser window if TikTok asks.
 
-```text
-ws://localhost:21213/
-```
-
-TikTok chat messages can be read by TTS. TikTok gift events are also parsed from the TikFinity event stream and shown in the Gifts/Donos feed.
+Only TikTok chat message events are routed into All Chats and the TTS queue. Gift, like, follow, and other TikTok event types are ignored for now and will be handled by later features.
 
 ### Kick
 
@@ -89,7 +84,7 @@ Live Setup is where the streamer chooses which platforms are active.
 Available source controls include:
 
 - Read Twitch chat.
-- Read TikTok via TikFinity.
+- Read TikTok Live.
 - Read Kick chat.
 - Read YouTube chat.
 - Read Rumble chat.
@@ -110,14 +105,8 @@ The streamer can clear the chat feed or pop it out into a separate window. The p
 
 ### Gifts/Donos
 
-The Gifts/Donos page shows a shared event queue for TikTok gifts and Streamlabs donations.
+The Gifts/Donos page shows a shared event queue for Streamlabs donations. TikTok Live gifts are not routed into this feed yet.
 
-TikTok gift rows show information such as:
-
-- TikTok source logo.
-- Viewer name.
-- Gift label.
-- Gift name.
 - Quantity.
 - Diamond value when available.
 - Optional message or comment.
@@ -236,25 +225,24 @@ Recommended OBS setup:
 4. Keep the source transparent.
 5. Place it where the TTS speaking indicator should appear.
 
-## TikTok Gift Testing
+## TikTok Live Chat Testing
 
-To test TikTok gifts:
+To test TikTok Live chat:
 
-1. Open TikFinity.
-2. Connect TikFinity to TikTok Live.
-3. Open TTS Everything.
-4. Enable `Read TikTok via TikFinity`.
+1. Open TTS Everything.
+2. Enable `Read TikTok Live`.
+3. Enter the creator's TikTok handle.
+4. Log in manually in the browser window if TikTok asks.
 5. Click `Connect live chat`.
-6. Open the Gifts/Donos page.
-7. Use a TikFinity test gift event if available, or trigger a real TikTok gift.
+6. Send a TikTok chat message.
 
 Expected result:
 
 ```text
-[TikTok logo] ViewerName    GIFT    Rose
-              5 diamonds x5        4:15 PM
-              Optional gift message
+[TikTok logo] ViewerName    Hello chat
 ```
+
+TikTok gifts, likes, and follows are intentionally ignored for now.
 
 ## Streamlabs Donation Testing
 
@@ -303,7 +291,7 @@ release/
 The current installer file is:
 
 ```text
-release/TTS Everything Setup 1.0.3.exe
+release/TTS Everything Setup 1.0.4.exe
 ```
 
 ## Local Data and Privacy
@@ -340,15 +328,14 @@ For stream use, it is better to over-block than to accidentally speak something 
 
 ## Troubleshooting
 
-### TikTok messages or gifts are not appearing
+### TikTok messages are not appearing
 
 Check that:
 
-- TikFinity is open.
-- TikFinity is connected to TikTok Live.
-- The TikFinity WebSocket endpoint is running.
-- TTS Everything has `Read TikTok via TikFinity` enabled.
-- TTS Everything is connected after TikFinity is running.
+- TTS Everything has `Read TikTok Live` enabled.
+- The TikTok handle is correct.
+- TikTok login completed in the browser window if prompted.
+- TTS Everything is connected after enabling TikTok Live.
 
 ### Streamlabs donations are not appearing
 
@@ -402,7 +389,7 @@ After saving, closing the main window should hide it to the tray. Use the tray m
 For a typical multistream setup:
 
 1. Start OBS.
-2. Start TikFinity if using TikTok.
+2. Enable TikTok Live and log in if using TikTok.
 3. Start Streamer.bot if using Streamlabs donations.
 4. Open TTS Everything.
 5. Enable the platforms you are streaming to.
@@ -418,3 +405,5 @@ For a typical multistream setup:
 TTS Everything is a local multistream TTS control center. It combines chat from several platforms, speaks eligible messages through ElevenLabs or Cartesia, applies aggressive moderation, supports per-user voice behavior, provides OBS-friendly visual output, and gives streamers popout windows for combined chat and gift/donation events.
 
 Its main value is simplicity during a live stream: one app, one TTS queue, one moderation system, and one place to monitor the chat and support events that matter.
+
+

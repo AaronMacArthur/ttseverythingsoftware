@@ -114,14 +114,12 @@
                 <article class="source-card">
                   <label class="switch-line">
                     <input id="tiktokSourceEnabled" type="checkbox" />
-                    <span>Read TikTok via TikFinity</span>
+                    <span>Read TikTok Live</span>
                   </label>
                   <label class="field" data-source-section="tiktok">
-                    <span>TikFinity endpoint</span>
-                    <div class="input-button">
-                      <input id="tiktokEndpoint" name="tiktokEndpoint" type="text" value="ws://localhost:21213/" readonly />
-                      <button class="ghost-button icon-button" id="copyTiktokEndpointButton" type="button">Copy</button>
-                    </div>
+                    <span>TikTok username / @handle</span>
+                    <input id="tiktokUsername" name="tiktokUsername" type="text" placeholder="creatorhandle" />
+                    <small>If TikTok asks, log in manually in the browser window that opens.</small>
                   </label>
                 </article>
 
@@ -244,7 +242,7 @@
             </div>
             <div class="gift-dono-shell">
               <ol id="giftDonoList" class="gift-dono-list" aria-live="polite">
-                <li class="gift-dono-empty">TikTok gifts and Streamlabs donations will appear here.</li>
+                <li class="gift-dono-empty">Streamlabs donations will appear here.</li>
               </ol>
             </div>
           </section>

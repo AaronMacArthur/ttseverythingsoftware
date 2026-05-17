@@ -14,11 +14,11 @@ The app stores local settings, including TTS provider API keys, in Electron app 
 
 ## Gifts/Donos Feed
 
-TTS Everything includes a shared Gifts/Donos page that combines TikTok gifts and Streamlabs donations into one queue.
+TTS Everything includes a shared Gifts/Donos page for donation-style events. Streamlabs donations are supported now; TikTok gift events are intentionally not routed yet.
 
-### TikTok Gifts
+### TikTok Live Chat
 
-Enable TikFinity in Live Setup and connect to the local TikFinity WebSocket endpoint. Gift events are parsed from the same TikFinity event stream used for TikTok chat and appear in the Gifts/Donos page and popout window.
+Enable TikTok Live in Live Setup, enter the creator handle, and log in manually if TikTok asks. Only chat message events are routed into TTS; gifts, likes, and follows are reserved for later features.
 
 ### Streamlabs Donations Through Streamer.bot
 
@@ -41,3 +41,4 @@ npm.cmd run dist
 ```
 
 The installer is written to `release/`. The app also has a Playback setting for `When exiting the app, minimize to tray instead`; when enabled, closing the window hides it to the tray and the tray menu can reopen or quit it.
+
