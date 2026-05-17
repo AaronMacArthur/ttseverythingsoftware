@@ -275,6 +275,7 @@ let hotkeyAudioContext = null;
 let tiktokSocket = null;
 let tiktokConnectInFlight = false;
 let tiktokAuthInFlight = false;
+let tiktokLiveStatus = "";
 let twitchSocket = null;
 let kickSocket = null;
 let kickConnectInFlight = false;
@@ -808,11 +809,7 @@ function updateLiveStatusStrip() {
         : "Ready"
     : "Off";
   elements.tiktokStatus.textContent = liveSettings.tiktokSourceEnabled
-    ? tiktokConnected
-      ? "Connected"
-      : tiktokConnecting
-        ? "Connecting"
-        : "Offline"
+    ? getTikTokStatusLabel(tiktokConnected, tiktokConnecting)
     : "Off";
   elements.kickStatus.textContent = liveSettings.kickSourceEnabled
     ? kickConnected
@@ -842,7 +839,7 @@ function updateLiveStatusStrip() {
   elements.runtimeOwnerStatus.textContent = "Local";
 
   setStatusTone(elements.twitchStatus, twitchConnected, liveSettings.twitchSourceEnabled);
-  setStatusTone(elements.tiktokStatus, tiktokConnected, liveSettings.tiktokSourceEnabled);
+  setStatusTone(elements.tiktokStatus, isTikTokStatusHealthy(tiktokConnected), liveSettings.tiktokSourceEnabled);
   setStatusTone(elements.kickStatus, kickConnected, liveSettings.kickSourceEnabled);
   setStatusTone(elements.youtubeStatus, youtubeConnected, liveSettings.youtubeSourceEnabled);
   setStatusTone(elements.rumbleStatus, rumbleConnected, liveSettings.rumbleSourceEnabled);
@@ -1573,6 +1570,7 @@ async function connectToTikTokLive() {
 
   clearReconnectTimer();
   tiktokConnectInFlight = true;
+  tiktokLiveStatus = "opening_hidden_browser";
   updateLiveStatusStrip();
   refreshConnectionControls();
 
@@ -1591,6 +1589,7 @@ async function connectToTikTokLive() {
     wsUrl = data.wsUrl || wsUrl;
   } catch (error) {
     tiktokConnectInFlight = false;
+    tiktokLiveStatus = "error";
     setFeedback(error.message || "Unable to start TikTok Live.", true);
     updateLiveStatusStrip();
     refreshConnectionControls();
@@ -1604,6 +1603,9 @@ async function connectToTikTokLive() {
 
   socket.addEventListener("open", () => {
     tiktokConnectInFlight = false;
+    if (!tiktokLiveStatus) {
+      tiktokLiveStatus = "connected";
+    }
     setFeedback("Connected to TikTok Live. Waiting for chat messages...", false, true);
     updateLiveStatusStrip();
     refreshConnectionControls();
@@ -1632,6 +1634,9 @@ async function connectToTikTokLive() {
       tiktokSocket = null;
     }
     tiktokConnectInFlight = false;
+    if (!suppressReconnect) {
+      tiktokLiveStatus = "";
+    }
     updateLiveStatusStrip();
     refreshConnectionControls();
     scheduleReconnect();
@@ -1639,6 +1644,7 @@ async function connectToTikTokLive() {
 
   socket.addEventListener("error", () => {
     tiktokConnectInFlight = false;
+    tiktokLiveStatus = "error";
     setFeedback("Unable to connect to TikTok Live. Try logging in again if TikTok asks.", true);
     updateLiveStatusStrip();
     refreshConnectionControls();
@@ -1646,9 +1652,35 @@ async function connectToTikTokLive() {
   });
 }
 
+function getTikTokStatusLabel(connected, connecting) {
+  const status = String(tiktokLiveStatus || "").toLowerCase();
+  if (status === "auth_required" || status === "session_expired") return "Login needed";
+  if (status === "live_not_found") return "Not live";
+  if (status === "error") return "Error";
+  if (status === "receiving_events") return "Receiving";
+  if (status === "connected") return "Connected";
+  if (status === "waiting_for_webcast_socket") return "Waiting";
+  if (status === "waiting_for_live_page") return "Loading live";
+  if (status === "opening_hidden_browser") return "Starting";
+  if (connected) return "Connected";
+  if (connecting) return "Connecting";
+  return "Ready";
+}
+
+function isTikTokStatusHealthy(connected) {
+  const status = String(tiktokLiveStatus || "").toLowerCase();
+  if (status === "receiving_events" || status === "connected") return true;
+  if (status === "auth_required" || status === "session_expired" || status === "live_not_found" || status === "error") return false;
+  return connected;
+}
+
 function handleTikTokStatusEvent(payload) {
   const status = String(payload.status || "").toLowerCase();
   const details = payload.details && typeof payload.details === "object" ? payload.details : {};
+  if (status) {
+    tiktokLiveStatus = status;
+    updateLiveStatusStrip();
+  }
   if (status === "auth_required" || status === "session_expired") {
     setFeedback("TikTok login is required. Turn TikTok Live off and on again to log in.", true);
   } else if (status === "live_not_found") {
@@ -2006,6 +2038,7 @@ function disconnectChat(showMessage = true) {
     tiktokSocket = null;
   }
   tiktokConnectInFlight = false;
+  tiktokLiveStatus = "";
   void stopTikTokLiveHelper();
   if (kickSocket) {
     kickSocket.close();
