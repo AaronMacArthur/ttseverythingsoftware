@@ -187,6 +187,9 @@ let persistQueue = Promise.resolve();
 let activeTtsJobs = 0;
 let ttsJobSequence = 0;
 const ttsJobQueue = [];
+const recentTtsDuplicateRequests = new Map();
+const TTS_DUPLICATE_WINDOW_MS = 5000;
+const TIKTOK_TTS_MESSAGE_ONLY_DUPLICATE_WINDOW_MS = 1500;
 const runtimeLogEntries = [];
 const OBS_PEPE_STATUS_STALE_MS = 3000;
 const COHOST_OVERLAY_STATUS_STALE_MS = 15000;
@@ -1798,6 +1801,17 @@ function applySubscriptionDeleted(subscription) {
 
 function enqueueTtsRequest(req, res, body, user) {
   const moderation = sanitizeModerationSettings(user.moderation);
+  if (isDuplicateTtsRequest(body)) {
+    recordRuntimeLog("tts_duplicate_skip", "Skipped duplicate TikTok TTS request before audio generation.");
+    sendJson(res, 200, {
+      duplicate: true,
+      meta: {
+        chargedCharacters: 0,
+        remainingCharacters: Math.max(0, Number(user.monthlyQuota || 0) - Number(user.monthlyUsed || 0))
+      }
+    });
+    return;
+  }
 
   if (ttsJobQueue.length >= MAX_TTS_QUEUE_LENGTH) {
     if ((moderation.fastChatSkipBehavior === "drop_oldest" || moderation.fastChatSkipBehavior === "latest_only") && ttsJobQueue.length) {
@@ -1886,6 +1900,66 @@ function removeQueuedCloseHandler(job) {
     job.res.off("close", job.handleClientClose);
     job.handleClientClose = null;
   }
+}
+
+function isDuplicateTtsRequest(body) {
+  const source = sanitizeTtsLabel(body?.source, "Live", 40);
+  if (source !== "TikTok") {
+    return false;
+  }
+
+  const now = Date.now();
+  for (const [key, seenAt] of recentTtsDuplicateRequests) {
+    if (now - seenAt > TTS_DUPLICATE_WINDOW_MS) {
+      recentTtsDuplicateRequests.delete(key);
+    }
+  }
+
+  const text = normalizeTtsDuplicateFingerprint(body?.text);
+  if (!text) {
+    return false;
+  }
+
+  const speaker = normalizeTtsDuplicateFingerprint(body?.speakerName || body?.title);
+  const keys = [];
+  if (speaker) {
+    keys.push(`${source}:speaker:${speaker}:${text}`);
+  }
+
+  const metadata = body?.metadata && typeof body.metadata === "object" ? body.metadata : {};
+  const dedupeKeys = Array.isArray(metadata.dedupeKeys) ? metadata.dedupeKeys : [];
+  for (const dedupeKey of dedupeKeys) {
+    const normalizedKey = normalizeTtsDuplicateFingerprint(dedupeKey);
+    if (normalizedKey) {
+      keys.push(`${source}:speaker:${normalizedKey}:${text}`);
+    }
+  }
+
+  const messageOnlyKey = `${source}:message-fast:${text}`;
+  const seenMessageAt = recentTtsDuplicateRequests.get(messageOnlyKey);
+  const duplicate = keys.some((key) => recentTtsDuplicateRequests.has(key))
+    || Boolean(seenMessageAt && now - seenMessageAt <= TIKTOK_TTS_MESSAGE_ONLY_DUPLICATE_WINDOW_MS);
+
+  for (const key of [...keys, messageOnlyKey]) {
+    recentTtsDuplicateRequests.set(key, now);
+  }
+
+  while (recentTtsDuplicateRequests.size > MAX_CHAT_HISTORY_IN_MEMORY) {
+    const oldestKey = recentTtsDuplicateRequests.keys().next().value;
+    recentTtsDuplicateRequests.delete(oldestKey);
+  }
+
+  return duplicate;
+}
+
+function normalizeTtsDuplicateFingerprint(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
 }
 
 async function handleTextToSpeech(req, res, body, authorizedUser) {

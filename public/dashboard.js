@@ -250,6 +250,7 @@ const recentMessageTimestamps = [];
 const antiSpamEvents = [];
 const MAX_CLIENT_CHAT_HISTORY = 500;
 const INCOMING_DUPLICATE_WINDOW_MS = 5000;
+const TIKTOK_MESSAGE_ONLY_DUPLICATE_WINDOW_MS = 1500;
 let voiceVolumes = {};
 let draftVoiceVolumes = {};
 
@@ -1756,6 +1757,7 @@ function parseTikTokLiveChatEvent(payload) {
     user,
     message,
     source: "TikTok",
+    dedupeKeys: getTikTokUserDedupeKeys(payload, user),
     isFollower: false,
     roles: []
   };
@@ -1781,6 +1783,25 @@ function parseTikTokLiveGiftEvent(payload) {
     message: "",
     createdAt: payload.timestamp ? new Date(payload.timestamp).toISOString() : new Date().toISOString()
   };
+}
+
+function getTikTokUserDedupeKeys(payload, fallbackUser) {
+  const userData = payload?.user && typeof payload.user === "object" ? payload.user : {};
+  const candidates = [
+    userData.id,
+    userData.userId,
+    userData.uniqueId,
+    userData.secUid,
+    userData.nickname,
+    userData.displayName,
+    payload?.userId,
+    payload?.uniqueId,
+    payload?.username,
+    payload?.displayName,
+    fallbackUser
+  ];
+
+  return [...new Set(candidates.map(normalizeViewerId).filter(Boolean))];
 }
 
 async function connectToKick() {
@@ -2435,7 +2456,10 @@ function enqueueIncomingMessage(entry) {
     voiceName: assignment.name,
     modelId: getModelIdForProvider(assignment.ttsProvider, liveSettings),
     ttsProvider: assignment.ttsProvider,
-    source: sourceName
+    source: sourceName,
+    metadata: {
+      dedupeKeys: Array.isArray(entry.dedupeKeys) ? entry.dedupeKeys.slice(0, 10) : []
+    }
   });
 
   enforceMaxQueueSize();
@@ -2464,6 +2488,21 @@ function isDuplicateIncomingMessage(entry) {
   if ((source === "Kick" || source === "TikTok") && user && message) {
     keys.push(`${source}:fingerprint:${user}:${message}`);
   }
+  if (source === "TikTok" && message) {
+    const dedupeKeys = Array.isArray(entry?.dedupeKeys) ? entry.dedupeKeys : [];
+    for (const dedupeKey of dedupeKeys) {
+      const normalizedKey = normalizeViewerId(dedupeKey);
+      if (normalizedKey) {
+        keys.push(`${source}:fingerprint:${normalizedKey}:${message}`);
+      }
+    }
+    const messageOnlyKey = `${source}:message-fast:${message}`;
+    const seenAt = recentIncomingMessages.get(messageOnlyKey);
+    if (seenAt && now - seenAt <= TIKTOK_MESSAGE_ONLY_DUPLICATE_WINDOW_MS) {
+      duplicate = true;
+    }
+    keys.push(messageOnlyKey);
+  }
 
   for (const key of keys) {
     if (recentIncomingMessages.has(key)) {
@@ -2479,6 +2518,8 @@ function isDuplicateIncomingMessage(entry) {
 
 function normalizeMessageFingerprint(value) {
   return String(value || "")
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim()
@@ -2921,6 +2962,9 @@ async function processSpeechQueue() {
     const data = await readTtsResponseJson(response, "Unable to generate speech");
     if (!response.ok) {
       throw new Error(data.error || "Unable to generate speech.");
+    }
+    if (data.duplicate) {
+      return;
     }
 
     nextClip.audioUrl = `data:${data.mimeType};base64,${data.audioBase64}`;
