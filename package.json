@@ -1,6 +1,6 @@
 {
   "name": "tts-everything",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A local desktop multistream TTS app for Twitch, TikTok, Kick, YouTube, and Rumble.",
   "main": "desktop-main.js",
   "scripts": {
@@ -8,9 +8,7 @@
     "desktop": "electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win nsis",
-    "tiktok:dev": "node scripts/tiktok-capture.js",
-    "tiktok:test": "node --test tests/tiktok-webcast.test.js",
-    "test": "node --check server.js && node --check public/dashboard.js && node --check public/combined-chat.js && node --check public/gift-dono.js && node --check desktop-main.js && node --check desktop-preload.js && node --check scripts/tiktok-capture.js && node --test tests/tiktok-webcast.test.js"
+    "test": "node --check server.js && node --check public/dashboard.js && node --check public/combined-chat.js && node --check public/gift-dono.js && node --check desktop-main.js && node --check desktop-preload.js"
   },
   "build": {
     "appId": "com.ttseverything.desktop",
@@ -21,7 +19,6 @@
       "desktop-preload.js",
       "server.js",
       "cohostEngine.js",
-      "integrations/**/*",
       "public/**/*",
       "package.json",
       "node_modules/**/*"
@@ -48,10 +45,7 @@
   },
   "dependencies": {
     "pg": "^8.20.0",
-    "playwright-core": "^1.60.0",
-    "protobufjs": "^8.3.0",
-    "stripe": "^22.1.0",
-    "ws": "^8.20.1"
+    "stripe": "^22.1.0"
   },
   "devDependencies": {
     "electron": "^41.5.0",

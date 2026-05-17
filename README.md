@@ -18,11 +18,7 @@ TTS Everything includes a shared Gifts/Donos page that combines TikTok gifts and
 
 ### TikTok Gifts
 
-Enable `Read TikTok Live` in Live Setup and enter the creator's TikTok handle. TTS Everything opens a local Chromium-based TikTok browser session, lets TikTok's own LIVE page create its Webcast WebSocket, captures those frames, and decodes chat/gift events when possible. TikTok gifts appear in the Gifts/Donos page and popout window.
-
-TikFinity is no longer required for the built-in TikTok path. If TikTok asks for login, log in manually in the opened browser window. TTS Everything does not ask for your TikTok password, does not automate login, and does not print cookies or session tokens.
-
-Raw TikTok diagnostics are off by default. Only enable diagnostics/raw logging when debugging because raw frames can include viewer usernames, chat messages, gift data, and profile URLs.
+Enable TikFinity in Live Setup and connect to the local TikFinity WebSocket endpoint. Gift events are parsed from the same TikFinity event stream used for TikTok chat and appear in the Gifts/Donos page and popout window.
 
 ### Streamlabs Donations Through Streamer.bot
 
@@ -45,13 +41,3 @@ npm.cmd run dist
 ```
 
 The installer is written to `release/`. The app also has a Playback setting for `When exiting the app, minimize to tray instead`; when enabled, closing the window hides it to the tray and the tray menu can reopen or quit it.
-
-## TikTok Developer Capture
-
-For isolated TikTok capture testing:
-
-```powershell
-npm.cmd run tiktok:dev -- --handle creatorhandle
-```
-
-Use `--save-raw` only when intentionally debugging raw Webcast frames. The command prints sanitized status and decoded event summaries only; it does not print cookies or tokens.

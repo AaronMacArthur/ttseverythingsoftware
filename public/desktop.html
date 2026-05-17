@@ -114,51 +114,15 @@
                 <article class="source-card">
                   <label class="switch-line">
                     <input id="tiktokSourceEnabled" type="checkbox" />
-                    <span>Read TikTok Live</span>
+                    <span>Read TikTok via TikFinity</span>
                   </label>
-                  <div class="form-grid one compact" data-source-section="tiktok">
-                    <label class="field">
-                      <span>TikTok username / @handle</span>
-                      <input id="tiktokUsername" type="text" placeholder="creatorhandle" />
-                      <small>TTS Everything opens a local TikTok browser session and captures LIVE Webcast events directly.</small>
-                    </label>
-                    <label class="switch-line full">
-                      <input id="tiktokWebcastHeadless" type="checkbox" />
-                      <span>Launch TikTok browser hidden</span>
-                    </label>
-                    <label class="field">
-                      <span>Browser profile path</span>
-                      <input id="tiktokWebcastProfileDir" type="text" placeholder="Default local TikTok browser profile" />
-                      <small>Leave blank to use the app's local TikTok browser profile. Log in manually if TikTok asks.</small>
-                    </label>
-                    <label class="switch-line full">
-                      <input id="tiktokWebcastCaptureRawFrames" type="checkbox" checked />
-                      <span>Capture raw Webcast frames</span>
-                    </label>
-                    <label class="switch-line full">
-                      <input id="tiktokWebcastDecodeKnownEvents" type="checkbox" checked />
-                      <span>Decode known chat and gift events</span>
-                    </label>
-                    <label class="switch-line full">
-                      <input id="tiktokWebcastDiagnosticsEnabled" type="checkbox" />
-                      <span>Diagnostics mode</span>
-                    </label>
-                    <label class="switch-line full">
-                      <input id="tiktokWebcastSaveRawFrameLog" type="checkbox" />
-                      <span>Save raw frame log</span>
-                    </label>
-                    <small>Raw TikTok diagnostics can include viewer usernames, chat messages, gift data, and profile URLs. Only enable when debugging.</small>
-                    <details class="advanced-details">
-                      <summary>Legacy external TikTok bridge</summary>
-                      <label class="field">
-                        <span>External bridge endpoint</span>
-                        <div class="input-button">
-                          <input id="tiktokEndpoint" name="tiktokEndpoint" type="text" value="ws://localhost:21213/" />
-                          <button class="ghost-button icon-button" id="copyTiktokEndpointButton" type="button">Copy</button>
-                        </div>
-                      </label>
-                    </details>
-                  </div>
+                  <label class="field" data-source-section="tiktok">
+                    <span>TikFinity endpoint</span>
+                    <div class="input-button">
+                      <input id="tiktokEndpoint" name="tiktokEndpoint" type="text" value="ws://localhost:21213/" readonly />
+                      <button class="ghost-button icon-button" id="copyTiktokEndpointButton" type="button">Copy</button>
+                    </div>
+                  </label>
                 </article>
 
                 <article class="source-card">
