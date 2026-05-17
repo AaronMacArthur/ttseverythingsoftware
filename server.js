@@ -41,6 +41,8 @@ const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
+const DESKTOP_STDERR_LOG = process.env.DESKTOP_STDERR_LOG || "";
+const DESKTOP_STDOUT_LOG = process.env.DESKTOP_STDOUT_LOG || "";
 const ADMIN_EMAIL = "aaron.macarthur1999@gmail.com";
 const MAX_TTS_QUEUE_LENGTH = Math.floor(clampEnvNumber("MAX_TTS_QUEUE_LENGTH", 1, 500, 50));
 const MAX_CONCURRENT_TTS_JOBS = Math.floor(clampEnvNumber("MAX_CONCURRENT_TTS_JOBS", 1, 10, 2));
@@ -445,6 +447,7 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, statusCode, {
       error: error.expose ? error.message : "Unexpected server error."
     });
+    logDesktopServerError(error, req);
   }
 });
 
@@ -1185,6 +1188,20 @@ function broadcastTikTokWebcast(eventName, payload) {
   for (const client of tiktokWebcastClients) {
     sendSse(client.res, eventName, payload);
   }
+}
+
+function logDesktopServerError(error, req) {
+  if (!DESKTOP_STDERR_LOG) {
+    return;
+  }
+  const line = JSON.stringify({
+    timestamp: new Date().toISOString(),
+    method: req?.method || "",
+    url: req?.url || "",
+    message: error?.message || String(error),
+    stack: error?.stack || ""
+  });
+  fs.appendFile(DESKTOP_STDERR_LOG, `${line}\n`, () => {});
 }
 
 function getCohostOverlayUrl(user) {

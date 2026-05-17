@@ -192,8 +192,13 @@ function findOpenPort(startPort) {
 async function startLocalServer(port, appUrl) {
   const dataDir = path.join(app.getPath("userData"), "data");
   const configFile = path.join(app.getPath("userData"), "tts-everything-config.json");
+  const stdoutLog = path.join(app.getPath("userData"), "server.stdout.log");
+  const stderrLog = path.join(app.getPath("userData"), "server.stderr.log");
   desktopDataDir = dataDir;
   desktopConfigFile = configFile;
+  fs.mkdirSync(app.getPath("userData"), { recursive: true });
+  const stdoutStream = fs.openSync(stdoutLog, "a");
+  const stderrStream = fs.openSync(stderrLog, "a");
   serverProcess = spawn(process.execPath, [path.join(__dirname, "server.js")], {
     env: {
       ...process.env,
@@ -204,13 +209,16 @@ async function startLocalServer(port, appUrl) {
       APP_URL: appUrl,
       DATA_DIR: dataDir,
       DESKTOP_CONFIG_FILE: configFile,
+      DESKTOP_STDOUT_LOG: stdoutLog,
+      DESKTOP_STDERR_LOG: stderrLog,
       SESSION_SECRET: "desktop-local-session-secret"
     },
-    stdio: "ignore",
+    stdio: ["ignore", stdoutStream, stderrStream],
     windowsHide: true
   });
 
-  serverProcess.once("exit", () => {
+  serverProcess.once("exit", (code, signal) => {
+    fs.appendFileSync(stderrLog, `[${new Date().toISOString()}] Local server exited code=${code ?? ""} signal=${signal ?? ""}\n`);
     serverProcess = null;
   });
 

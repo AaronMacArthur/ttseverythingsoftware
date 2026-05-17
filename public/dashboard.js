@@ -1635,10 +1635,26 @@ async function connectToTikTokLive() {
     updateLiveStatusStrip();
     refreshConnectionControls();
   } catch (error) {
-    setFeedback(error.message, true);
+    setFeedback(await describeFetchFailure(error, "TikTok Live could not start"), true);
     closeTikTokWebcastEventStream();
     scheduleReconnect();
   }
+}
+
+async function describeFetchFailure(error, label) {
+  const message = error?.message || String(error || "");
+  if (!/failed to fetch|networkerror|load failed/i.test(message)) {
+    return message;
+  }
+  try {
+    const health = await fetch("/api/health", { credentials: "include", cache: "no-store" });
+    if (health.ok) {
+      return `${label}: the local server is running, but the request was interrupted. Try Disconnect, then Connect live chat again.`;
+    }
+  } catch {
+    return `${label}: the local TTS Everything server is not responding. Restart TTS Everything, then try TikTok again. If it repeats, check server.stderr.log in the app data folder.`;
+  }
+  return `${label}: ${message}`;
 }
 
 function openTikTokWebcastEventStream() {
