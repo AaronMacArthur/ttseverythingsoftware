@@ -1497,8 +1497,16 @@ async function handleConnect(event) {
   }
 
   livePausedManually = false;
-  await saveEverything(true);
-  await ensureDesiredLiveState();
+  handleSettingsInputChange();
+  const saved = await saveEverything(true);
+  if (!saved) {
+    return;
+  }
+  const connected = await ensureDesiredLiveState();
+  const liveSettings = getLiveSettings();
+  if (connected && liveSettings.tiktokSourceEnabled && !tiktokSocket && !tiktokConnectInFlight) {
+    void connectToTikTokLive();
+  }
 }
 
 function connectToTwitch(channel) {
