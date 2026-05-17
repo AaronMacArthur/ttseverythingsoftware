@@ -1628,6 +1628,13 @@ async function connectToTikTokLive() {
       handleTikTokStatusEvent(payload);
       return;
     }
+    if (payload.event === "gift") {
+      const gift = parseTikTokLiveGiftEvent(payload);
+      if (gift) {
+        addGiftDonoEvent(gift);
+      }
+      return;
+    }
     if (payload.event !== "chat") {
       return;
     }
@@ -1750,6 +1757,28 @@ function parseTikTokLiveChatEvent(payload) {
     source: "TikTok",
     isFollower: false,
     roles: []
+  };
+}
+
+function parseTikTokLiveGiftEvent(payload) {
+  const gift = payload.gift && typeof payload.gift === "object" ? payload.gift : {};
+  const giftName = coerceTikTokText(gift.name || payload.giftName || payload.name || payload.title);
+  if (!giftName) {
+    return null;
+  }
+
+  const userData = payload.user && typeof payload.user === "object" ? payload.user : {};
+  const user = coerceTikTokText(userData.displayName || userData.nickname || userData.uniqueId || userData.id) || "TikTok viewer";
+  return {
+    id: String(payload.id || payload.raw?.payloadSha256 || `${normalizeViewerId(user)}:${giftName}:${payload.timestamp || Date.now()}`),
+    source: "TikTok",
+    type: "Gift",
+    user,
+    title: giftName,
+    amount: "",
+    quantity: Math.max(1, Number(gift.repeatCount || payload.repeatCount) || 1),
+    message: "",
+    createdAt: payload.timestamp ? new Date(payload.timestamp).toISOString() : new Date().toISOString()
   };
 }
 
@@ -3149,7 +3178,7 @@ function renderGiftDonoEvents() {
   }
   elements.giftDonoCount.textContent = `${giftDonoEvents.length} ${giftDonoEvents.length === 1 ? "event" : "events"}`;
   if (!giftDonoEvents.length) {
-    elements.giftDonoList.innerHTML = '<li class="gift-dono-empty">Streamlabs donations will appear here.</li>';
+    elements.giftDonoList.innerHTML = '<li class="gift-dono-empty">TikTok gifts and Streamlabs donations will appear here.</li>';
     return;
   }
   elements.giftDonoList.innerHTML = "";

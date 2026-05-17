@@ -58,7 +58,7 @@ function normalizeEvent(source) {
 function renderGiftDonoPopout() {
   giftDonoCount.textContent = `${giftDonoEvents.length} ${giftDonoEvents.length === 1 ? "event" : "events"}`;
   if (!giftDonoEvents.length) {
-    giftDonoList.innerHTML = '<li class="gift-dono-empty">Open the main app and connect Streamer.bot.</li>';
+    giftDonoList.innerHTML = '<li class="gift-dono-empty">Open the main app and connect TikTok Live or Streamer.bot.</li>';
     return;
   }
   giftDonoList.innerHTML = "";

@@ -291,7 +291,7 @@ release/
 The current installer file is:
 
 ```text
-release/TTS Everything Setup 1.0.8.exe
+release/TTS Everything Setup 1.0.9.exe
 ```
 
 ## Local Data and Privacy
