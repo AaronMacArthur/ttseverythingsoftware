@@ -444,10 +444,14 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 404, { error: "Not found." });
   } catch (error) {
     const statusCode = error.statusCode || 500;
-    sendJson(res, statusCode, {
-      error: error.expose ? error.message : "Unexpected server error."
-    });
     logDesktopServerError(error, req);
+    if (!res.headersSent && !res.writableEnded && !res.destroyed) {
+      sendJson(res, statusCode, {
+        error: error.expose ? error.message : "Unexpected server error."
+      });
+    } else if (!res.writableEnded && !res.destroyed) {
+      res.end();
+    }
   }
 });
 
