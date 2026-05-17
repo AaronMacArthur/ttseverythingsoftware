@@ -4845,6 +4845,14 @@ function normalizeChannel(value) {
   return String(value || "").trim().toLowerCase().replace(/^#/, "");
 }
 
+function normalizeTikTokHandle(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^@+/, "")
+    .replace(/[^\w.-]/g, "")
+    .slice(0, 80);
+}
+
 function clampNumber(value, min, max, fallback) {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) {
