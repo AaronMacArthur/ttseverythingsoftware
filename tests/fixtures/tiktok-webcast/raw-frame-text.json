@@ -1,0 +1,13 @@
+{
+  "id": "fixture-text-1",
+  "timestamp": "2026-05-17T00:00:00.000Z",
+  "direction": "received",
+  "socketId": "socket-1",
+  "socketUrlRedacted": "wss://webcast.tiktok.com/ws/?msToken=%5BREDACTED%5D",
+  "payloadKind": "text",
+  "payloadBase64": "V2ViY2FzdENoYXRNZXNzYWdlIGNoYXR0ZXIgaGVsbG8gdGhlcmU=",
+  "payloadUtf8Preview": "WebcastChatMessage chatter hello there",
+  "byteLength": 38,
+  "sha256": "fixture",
+  "sequence": 1
+}

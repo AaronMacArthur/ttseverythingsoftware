@@ -6,6 +6,11 @@ const { URL } = require("url");
 const Stripe = require("stripe");
 const { Pool } = require("pg");
 const cohostEngine = require("./cohostEngine");
+const {
+  TikTokWebcastService,
+  resolveTikTokDiagnosticsDir,
+  resolveTikTokProfileDir
+} = require("./integrations/tiktok-webcast");
 
 loadEnvFile();
 
@@ -192,6 +197,8 @@ let obsPepeStatus = {
   updatedAt: ""
 };
 const cohostOverlayClients = new Set();
+let tiktokWebcastService = null;
+const tiktokWebcastClients = new Set();
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -242,6 +249,39 @@ const server = http.createServer(async (req, res) => {
 
     if (DESKTOP_MODE && req.method === "POST" && requestUrl.pathname === "/api/desktop/reset") {
       return handleResetDesktopApp(req, res);
+    }
+
+    if (DESKTOP_MODE && req.method === "POST" && requestUrl.pathname === "/api/tiktok-webcast/start") {
+      const body = await readJsonBody(req);
+      return await handleTikTokWebcastStart(req, res, body);
+    }
+
+    if (DESKTOP_MODE && req.method === "POST" && requestUrl.pathname === "/api/tiktok-webcast/stop") {
+      return await handleTikTokWebcastStop(req, res);
+    }
+
+    if (DESKTOP_MODE && req.method === "GET" && requestUrl.pathname === "/api/tiktok-webcast/status") {
+      return handleTikTokWebcastStatus(req, res);
+    }
+
+    if (DESKTOP_MODE && req.method === "GET" && requestUrl.pathname === "/api/tiktok-webcast/events") {
+      return handleTikTokWebcastEventStream(req, res);
+    }
+
+    if (DESKTOP_MODE && req.method === "GET" && requestUrl.pathname === "/api/tiktok-webcast/recent") {
+      return handleTikTokWebcastRecent(req, res, requestUrl);
+    }
+
+    if (DESKTOP_MODE && req.method === "GET" && requestUrl.pathname === "/api/tiktok-webcast/raw/recent") {
+      return handleTikTokWebcastRawRecent(req, res, requestUrl);
+    }
+
+    if (DESKTOP_MODE && req.method === "GET" && requestUrl.pathname === "/api/tiktok-webcast/stats") {
+      return handleTikTokWebcastStats(req, res);
+    }
+
+    if (DESKTOP_MODE && req.method === "POST" && requestUrl.pathname === "/api/tiktok-webcast/raw/clear") {
+      return handleTikTokWebcastClearRaw(req, res);
     }
 
     if (DESKTOP_MODE && req.method === "GET" && requestUrl.pathname === "/api/kick/chatroom") {
@@ -452,6 +492,13 @@ function handleUpdateDesktopSettings(req, res, body) {
   desktopSettings.youtubeLiveChatId = String(body?.youtubeLiveChatId || desktopSettings.youtubeLiveChatId || "").trim();
   desktopSettings.rumbleApiUrl = getSubmittedSecret(body?.rumbleApiUrl) || desktopSettings.rumbleApiUrl || "";
   desktopSettings.streamerbotEndpoint = normalizeStreamerbotEndpoint(body?.streamerbotEndpoint || desktopSettings.streamerbotEndpoint);
+  desktopSettings.tiktokUsername = normalizeTikTokHandle(body?.tiktokUsername ?? desktopSettings.tiktokUsername);
+  desktopSettings.tiktokWebcastProfileDir = normalizeLocalPath(body?.tiktokWebcastProfileDir ?? desktopSettings.tiktokWebcastProfileDir);
+  desktopSettings.tiktokWebcastHeadless = Boolean(body?.tiktokWebcastHeadless);
+  desktopSettings.tiktokWebcastCaptureRawFrames = body?.tiktokWebcastCaptureRawFrames !== false;
+  desktopSettings.tiktokWebcastSaveRawFrameLog = Boolean(body?.tiktokWebcastSaveRawFrameLog);
+  desktopSettings.tiktokWebcastDecodeKnownEvents = body?.tiktokWebcastDecodeKnownEvents !== false;
+  desktopSettings.tiktokWebcastDiagnosticsEnabled = Boolean(body?.tiktokWebcastDiagnosticsEnabled);
   desktopSettings.minimizeToTrayOnExit = Boolean(body?.minimizeToTrayOnExit);
   desktopSettings.muteHotkey = normalizeHotkey(body?.muteHotkey ?? desktopSettings.muteHotkey);
   if (body?.liveSettings && typeof body.liveSettings === "object") {
@@ -486,6 +533,81 @@ function handleResetDesktopApp(req, res) {
   const store = createEmptyStore();
   const user = ensureDesktopUser(store);
   return createSessionAndRespond(res, store, user);
+}
+
+async function handleTikTokWebcastStart(req, res, body) {
+  requireUser(req);
+  const settings = readDesktopSettings();
+  const username = normalizeTikTokHandle(body?.username || settings.tiktokUsername);
+  if (!username) {
+    throw createUserError(400, "Enter a TikTok handle before connecting.");
+  }
+  const profileDir = normalizeLocalPath(body?.profileDir || settings.tiktokWebcastProfileDir) || resolveTikTokProfileDir(DATA_DIR);
+  const service = getTikTokWebcastService();
+  await service.start({
+    username,
+    profileDir,
+    headless: Boolean(body?.headless ?? settings.tiktokWebcastHeadless),
+    captureRawFrames: body?.captureRawFrames ?? settings.tiktokWebcastCaptureRawFrames ?? true,
+    saveRawFrameLog: Boolean(body?.saveRawFrameLog ?? settings.tiktokWebcastSaveRawFrameLog),
+    decodeKnownEvents: body?.decodeKnownEvents ?? settings.tiktokWebcastDecodeKnownEvents ?? true,
+    diagnosticsEnabled: Boolean(body?.diagnosticsEnabled ?? settings.tiktokWebcastDiagnosticsEnabled)
+  });
+  sendJson(res, 200, { ok: true, status: service.getStatus() });
+}
+
+async function handleTikTokWebcastStop(req, res) {
+  requireUser(req);
+  await getTikTokWebcastService().stop();
+  sendJson(res, 200, { ok: true, status: getTikTokWebcastService().getStatus() });
+}
+
+function handleTikTokWebcastStatus(req, res) {
+  requireUser(req);
+  sendJson(res, 200, { status: getTikTokWebcastService().getStatus() });
+}
+
+function handleTikTokWebcastRecent(req, res, requestUrl) {
+  requireUser(req);
+  const limit = Number(requestUrl.searchParams.get("limit") || 100);
+  sendJson(res, 200, { events: getTikTokWebcastService().getRecentEvents(limit) });
+}
+
+function handleTikTokWebcastRawRecent(req, res, requestUrl) {
+  requireUser(req);
+  const service = getTikTokWebcastService();
+  const limit = Number(requestUrl.searchParams.get("limit") || 50);
+  sendJson(res, 200, { frames: service.getRecentFrames(limit) });
+}
+
+function handleTikTokWebcastStats(req, res) {
+  requireUser(req);
+  sendJson(res, 200, { stats: getTikTokWebcastService().getStats() });
+}
+
+function handleTikTokWebcastClearRaw(req, res) {
+  requireUser(req);
+  getTikTokWebcastService().clearRawLogs();
+  sendJson(res, 200, { ok: true });
+}
+
+function handleTikTokWebcastEventStream(req, res) {
+  requireUser(req);
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no"
+  });
+  const client = { res };
+  tiktokWebcastClients.add(client);
+  writeSse(res, "status", getTikTokWebcastService().getStatus());
+  for (const event of getTikTokWebcastService().getRecentEvents(25)) {
+    writeSse(res, "event", event);
+  }
+  req.on("close", () => {
+    tiktokWebcastClients.delete(client);
+  });
 }
 
 async function handleKickChatroom(req, res, requestUrl) {
@@ -1033,6 +1155,36 @@ function sendSse(res, eventName, payload) {
   }
   res.write(`event: ${eventName}\n`);
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function getTikTokWebcastService() {
+  if (tiktokWebcastService) {
+    return tiktokWebcastService;
+  }
+  tiktokWebcastService = new TikTokWebcastService({
+    appDataDir: DATA_DIR,
+    profileDir: resolveTikTokProfileDir(DATA_DIR),
+    diagnosticsDir: resolveTikTokDiagnosticsDir(DATA_DIR)
+  });
+  tiktokWebcastService.on("status", (status) => broadcastTikTokWebcast("status", status));
+  tiktokWebcastService.on("event", (event) => broadcastTikTokWebcast("event", event));
+  tiktokWebcastService.on("inspection", (inspection) => broadcastTikTokWebcast("inspection", inspection));
+  tiktokWebcastService.on("rawFrame", (frame) => {
+    const status = tiktokWebcastService.getStatus();
+    if (status.lastFrameAt === frame.timestamp) {
+      broadcastTikTokWebcast("status", status);
+    }
+  });
+  tiktokWebcastService.on("error", (error) => {
+    broadcastTikTokWebcast("error", { message: error.message });
+  });
+  return tiktokWebcastService;
+}
+
+function broadcastTikTokWebcast(eventName, payload) {
+  for (const client of tiktokWebcastClients) {
+    sendSse(client.res, eventName, payload);
+  }
 }
 
 function getCohostOverlayUrl(user) {
@@ -2470,6 +2622,14 @@ function getPublicDesktopSettings() {
     rumbleApiUrlConfigured: Boolean(settings.rumbleApiUrl),
     rumbleApiUrlMasked: settings.rumbleApiUrl ? SAVED_SECRET_MASK : "",
     streamerbotEndpoint: normalizeStreamerbotEndpoint(settings.streamerbotEndpoint),
+    tiktokUsername: normalizeTikTokHandle(settings.tiktokUsername),
+    tiktokWebcastProfileDir: normalizeLocalPath(settings.tiktokWebcastProfileDir),
+    tiktokWebcastDefaultProfileDir: resolveTikTokProfileDir(DATA_DIR),
+    tiktokWebcastHeadless: Boolean(settings.tiktokWebcastHeadless),
+    tiktokWebcastCaptureRawFrames: settings.tiktokWebcastCaptureRawFrames !== false,
+    tiktokWebcastSaveRawFrameLog: Boolean(settings.tiktokWebcastSaveRawFrameLog),
+    tiktokWebcastDecodeKnownEvents: settings.tiktokWebcastDecodeKnownEvents !== false,
+    tiktokWebcastDiagnosticsEnabled: Boolean(settings.tiktokWebcastDiagnosticsEnabled),
     minimizeToTrayOnExit: Boolean(settings.minimizeToTrayOnExit),
     muteHotkey: normalizeHotkey(settings.muteHotkey),
     customVoices: sanitizeCustomVoices(settings.customVoices)
@@ -2489,6 +2649,14 @@ function normalizeStreamerbotEndpoint(value) {
     return endpoint;
   }
   return `ws://${endpoint.replace(/^\/+/, "")}`;
+}
+
+function normalizeTikTokHandle(value) {
+  return String(value || "").replace(/^@+/, "").trim().replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 48);
+}
+
+function normalizeLocalPath(value) {
+  return String(value || "").trim().slice(0, 500);
 }
 
 function getSubmittedSecret(value) {

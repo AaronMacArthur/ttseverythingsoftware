@@ -71,7 +71,7 @@ async function readTtsResponseJson(response, fallbackMessage) {
 
   await response.text();
   const statusText = response.status ? ` (${response.status})` : "";
-  throw new Error(`${fallbackMessage}${statusText}: TTS returned an HTML page instead of JSON. Refresh the dashboard, then reconnect TikFinity.`);
+  throw new Error(`${fallbackMessage}${statusText}: TTS returned an HTML page instead of JSON. Refresh the dashboard, then reconnect live chat.`);
 }
 
 const elements = {
@@ -200,6 +200,13 @@ const elements = {
   similarityBoost: document.getElementById("similarityBoost"),
   similarityValue: document.getElementById("similarityValue"),
   tiktokEndpoint: document.getElementById("tiktokEndpoint"),
+  tiktokUsername: document.getElementById("tiktokUsername"),
+  tiktokWebcastCaptureRawFrames: document.getElementById("tiktokWebcastCaptureRawFrames"),
+  tiktokWebcastDecodeKnownEvents: document.getElementById("tiktokWebcastDecodeKnownEvents"),
+  tiktokWebcastDiagnosticsEnabled: document.getElementById("tiktokWebcastDiagnosticsEnabled"),
+  tiktokWebcastHeadless: document.getElementById("tiktokWebcastHeadless"),
+  tiktokWebcastProfileDir: document.getElementById("tiktokWebcastProfileDir"),
+  tiktokWebcastSaveRawFrameLog: document.getElementById("tiktokWebcastSaveRawFrameLog"),
   tiktokStatus: document.getElementById("tiktokStatus"),
   tiktokSourceEnabled: document.getElementById("tiktokSourceEnabled"),
   tiktokTtsProvider: document.getElementById("tiktokTtsProvider"),
@@ -274,6 +281,7 @@ let obsPepeStatusSignature = "";
 let capturingMuteHotkey = false;
 let hotkeyAudioContext = null;
 let tiktokSocket = null;
+let tiktokWebcastStatus = null;
 let twitchSocket = null;
 let kickSocket = null;
 let kickConnectInFlight = false;
@@ -323,7 +331,7 @@ function bindEvents() {
   elements.clearQueueButton.addEventListener("click", clearQueue);
   elements.copyBrowserSourceButton.addEventListener("click", () => copyField(elements.browserSourceUrl, "OBS browser source URL copied."));
   elements.copyObsPepeSourceButton?.addEventListener("click", () => copyField(elements.obsPepeSourceUrl, "OBS Pepe browser source URL copied."));
-  elements.copyTiktokEndpointButton.addEventListener("click", () => copyField(elements.tiktokEndpoint, "TikFinity endpoint copied."));
+  elements.copyTiktokEndpointButton?.addEventListener("click", () => copyField(elements.tiktokEndpoint, "Legacy TikTok bridge endpoint copied."));
   elements.popoutCombinedChatButton?.addEventListener("click", openCombinedChatWindow);
   elements.popoutGiftDonoButton?.addEventListener("click", openGiftDonoWindow);
   elements.captureMuteHotkeyButton.addEventListener("click", beginMuteHotkeyCapture);
@@ -366,6 +374,13 @@ function bindEvents() {
   const inputs = [
     elements.twitchSourceEnabled,
     elements.tiktokSourceEnabled,
+    elements.tiktokUsername,
+    elements.tiktokWebcastHeadless,
+    elements.tiktokWebcastProfileDir,
+    elements.tiktokWebcastCaptureRawFrames,
+    elements.tiktokWebcastSaveRawFrameLog,
+    elements.tiktokWebcastDecodeKnownEvents,
+    elements.tiktokWebcastDiagnosticsEnabled,
     elements.kickSourceEnabled,
     elements.youtubeSourceEnabled,
     elements.rumbleSourceEnabled,
@@ -790,8 +805,8 @@ function updateLiveStatusStrip() {
   const liveSettings = getLiveSettings();
   const twitchConnected = twitchSocket?.readyState === WebSocket.OPEN;
   const twitchConnecting = twitchSocket?.readyState === WebSocket.CONNECTING;
-  const tiktokConnected = tiktokSocket?.readyState === WebSocket.OPEN;
-  const tiktokConnecting = tiktokSocket?.readyState === WebSocket.CONNECTING;
+  const tiktokConnected = ["connected", "receiving"].includes(tiktokWebcastStatus?.websocketState);
+  const tiktokConnecting = Boolean(tiktokSocket) && !tiktokConnected;
   const kickConnected = kickSocket?.readyState === WebSocket.OPEN;
   const kickConnecting = kickConnectInFlight || kickSocket?.readyState === WebSocket.CONNECTING;
   const youtubeConnected = Boolean(youtubePollTimer);
@@ -807,11 +822,7 @@ function updateLiveStatusStrip() {
         : "Ready"
     : "Off";
   elements.tiktokStatus.textContent = liveSettings.tiktokSourceEnabled
-    ? tiktokConnected
-      ? "Connected"
-      : tiktokConnecting
-        ? "Connecting"
-        : "Offline"
+    ? getTikTokStatusLabel(tiktokWebcastStatus, tiktokConnecting)
     : "Off";
   elements.kickStatus.textContent = liveSettings.kickSourceEnabled
     ? kickConnected
@@ -850,6 +861,24 @@ function updateLiveStatusStrip() {
   setStatusTone(elements.runtimeOwnerStatus, true, true);
 }
 
+function getTikTokStatusLabel(status, connecting) {
+  if (!status && connecting) return "Starting browser";
+  if (!status) return "Ready";
+  if (status.lastError) return "Error";
+  const browserState = status.browserState || "";
+  const websocketState = status.websocketState || "";
+  if (browserState === "starting") return "Starting browser";
+  if (browserState === "manual_login_required") return "Waiting for login";
+  if (browserState === "live_not_found") return "Live not found";
+  if (browserState === "live_ended") return "Live ended";
+  if (browserState === "error") return "Error";
+  if (websocketState === "receiving") return "Receiving frames";
+  if (websocketState === "connected") return "Connected";
+  if (websocketState === "waiting") return "Waiting for Webcast";
+  if (websocketState === "closed") return "Reconnecting";
+  return connecting ? "Starting browser" : "Ready";
+}
+
 function renderBillingStatus() {
   if (desktopMode) {
     elements.billingStatusText.textContent = desktopSettings?.apiKeyConfigured ? "ElevenLabs ready" : "API key needed";
@@ -886,6 +915,14 @@ function renderDesktopSettings(settings, options = {}) {
   elements.desktopRumbleApiUrl.value = settings.rumbleApiUrlConfigured ? SAVED_SECRET_MASK : "";
   elements.desktopRumbleApiUrl.placeholder = "https://rumble.com/-livestream-api/...";
   elements.streamerbotEndpoint.value = settings.streamerbotEndpoint || "ws://127.0.0.1:8080/";
+  elements.tiktokUsername.value = settings.tiktokUsername || "";
+  elements.tiktokWebcastProfileDir.value = settings.tiktokWebcastProfileDir || "";
+  elements.tiktokWebcastProfileDir.placeholder = settings.tiktokWebcastDefaultProfileDir || "Default local TikTok browser profile";
+  elements.tiktokWebcastHeadless.checked = Boolean(settings.tiktokWebcastHeadless);
+  elements.tiktokWebcastCaptureRawFrames.checked = settings.tiktokWebcastCaptureRawFrames !== false;
+  elements.tiktokWebcastSaveRawFrameLog.checked = Boolean(settings.tiktokWebcastSaveRawFrameLog);
+  elements.tiktokWebcastDecodeKnownEvents.checked = settings.tiktokWebcastDecodeKnownEvents !== false;
+  elements.tiktokWebcastDiagnosticsEnabled.checked = Boolean(settings.tiktokWebcastDiagnosticsEnabled);
   elements.minimizeToTrayOnExit.checked = Boolean(settings.minimizeToTrayOnExit);
   elements.muteHotkey.value = settings.muteHotkey || "";
   elements.muteHotkeyStatus.textContent = settings.muteHotkey
@@ -921,6 +958,13 @@ async function saveDesktopSettings(options = {}) {
         youtubeLiveChatId: elements.desktopYoutubeLiveChatId.value,
         rumbleApiUrl: getUnmaskedFieldValue(elements.desktopRumbleApiUrl),
         streamerbotEndpoint: elements.streamerbotEndpoint.value,
+        tiktokUsername: elements.tiktokUsername.value,
+        tiktokWebcastProfileDir: elements.tiktokWebcastProfileDir.value,
+        tiktokWebcastHeadless: Boolean(elements.tiktokWebcastHeadless.checked),
+        tiktokWebcastCaptureRawFrames: Boolean(elements.tiktokWebcastCaptureRawFrames.checked),
+        tiktokWebcastSaveRawFrameLog: Boolean(elements.tiktokWebcastSaveRawFrameLog.checked),
+        tiktokWebcastDecodeKnownEvents: Boolean(elements.tiktokWebcastDecodeKnownEvents.checked),
+        tiktokWebcastDiagnosticsEnabled: Boolean(elements.tiktokWebcastDiagnosticsEnabled.checked),
         minimizeToTrayOnExit: Boolean(elements.minimizeToTrayOnExit.checked),
         muteHotkey: elements.muteHotkey.value,
         customVoices: normalizeCustomVoices(desktopSettings?.customVoices),
@@ -1554,47 +1598,159 @@ function connectToTwitch(channel) {
   });
 }
 
-function connectToTikFinity() {
+async function connectToTikTokLive() {
   if (!getLiveSettings().tiktokSourceEnabled) {
     return;
   }
   clearReconnectTimer();
-  const socket = new WebSocket(elements.tiktokEndpoint.value);
-  tiktokSocket = socket;
+  const username = normalizeTikTokHandle(elements.tiktokUsername.value || desktopSettings?.tiktokUsername);
+  if (!username) {
+    setFeedback("Enter a TikTok handle before connecting TikTok Live.", true);
+    return;
+  }
+  openTikTokWebcastEventStream();
   updateLiveStatusStrip();
 
-  socket.addEventListener("open", () => {
-    setFeedback("Connected to TikFinity. Waiting for TikTok Live comments...", false, true);
+  try {
+    const response = await fetch("/api/tiktok-webcast/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        username,
+        profileDir: elements.tiktokWebcastProfileDir.value,
+        headless: Boolean(elements.tiktokWebcastHeadless.checked),
+        captureRawFrames: Boolean(elements.tiktokWebcastCaptureRawFrames.checked),
+        saveRawFrameLog: Boolean(elements.tiktokWebcastSaveRawFrameLog.checked),
+        decodeKnownEvents: Boolean(elements.tiktokWebcastDecodeKnownEvents.checked),
+        diagnosticsEnabled: Boolean(elements.tiktokWebcastDiagnosticsEnabled.checked)
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Unable to start TikTok Live.");
+    }
+    tiktokWebcastStatus = data.status || tiktokWebcastStatus;
+    setFeedback("Started built-in TikTok Live. Log in manually if the opened browser asks.", false, true);
     updateLiveStatusStrip();
     refreshConnectionControls();
-  });
-
-  socket.addEventListener("message", (event) => {
-    const giftEvent = parseTikFinityGiftEvent(event.data);
-    if (giftEvent) {
-      addGiftDonoEvent(giftEvent);
-    }
-    const parsed = parseTikFinityMessage(event.data);
-    if (parsed) {
-      enqueueIncomingMessage(parsed);
-    }
-  });
-
-  socket.addEventListener("close", () => {
-    if (tiktokSocket === socket) {
-      tiktokSocket = null;
-    }
-    updateLiveStatusStrip();
-    refreshConnectionControls();
+  } catch (error) {
+    setFeedback(error.message, true);
+    closeTikTokWebcastEventStream();
     scheduleReconnect();
-  });
+  }
+}
 
-  socket.addEventListener("error", () => {
-    setFeedback("Unable to connect to TikFinity on ws://localhost:21213/. Make sure TikFinity is running locally.", true);
+function openTikTokWebcastEventStream() {
+  if (tiktokSocket && tiktokSocket.readyState !== EventSource.CLOSED) {
+    return;
+  }
+  const stream = new EventSource("/api/tiktok-webcast/events", { withCredentials: true });
+  tiktokSocket = stream;
+  stream.addEventListener("status", (event) => {
+    tiktokWebcastStatus = safeJsonParse(event.data) || tiktokWebcastStatus;
+    if (tiktokWebcastStatus?.userMessage) {
+      setFeedback(tiktokWebcastStatus.userMessage, tiktokWebcastStatus.browserState === "error");
+    }
     updateLiveStatusStrip();
     refreshConnectionControls();
-    scheduleReconnect();
   });
+  stream.addEventListener("event", (event) => {
+    const item = safeJsonParse(event.data);
+    handleTikTokWebcastEvent(item);
+  });
+  stream.addEventListener("inspection", (event) => {
+    const item = safeJsonParse(event.data);
+    if (item?.visibleStrings?.length && elements.tiktokWebcastDiagnosticsEnabled?.checked) {
+      setFeedback(`TikTok diagnostics: ${item.visibleStrings.slice(0, 3).join(" | ")}`, false, true);
+    }
+  });
+  stream.addEventListener("error", () => {
+    if (tiktokSocket === stream && stream.readyState === EventSource.CLOSED) {
+      closeTikTokWebcastEventStream();
+      updateLiveStatusStrip();
+      refreshConnectionControls();
+      scheduleReconnect();
+    }
+  });
+}
+
+function closeTikTokWebcastEventStream() {
+  if (tiktokSocket) {
+    tiktokSocket.close();
+    tiktokSocket = null;
+  }
+}
+
+async function stopTikTokWebcastService() {
+  try {
+    await fetch("/api/tiktok-webcast/stop", {
+      method: "POST",
+      credentials: "include"
+    });
+  } catch {
+    // Stop is best-effort; reconnect logic will refresh the visible state.
+  } finally {
+    tiktokWebcastStatus = null;
+  }
+}
+
+function handleTikTokWebcastEvent(event) {
+  if (!event || event.platform !== "tiktok") {
+    return;
+  }
+  if (event.eventType === "chat" && event.confidence >= 0.65) {
+    const message = mapTikTokWebcastChat(event);
+    if (message) {
+      enqueueIncomingMessage(message);
+    }
+  } else if (event.eventType === "gift" && event.confidence >= 0.6) {
+    const gift = mapTikTokWebcastGift(event);
+    if (gift) {
+      addGiftDonoEvent(gift);
+    }
+  }
+}
+
+function mapTikTokWebcastChat(event) {
+  const user = event.user?.displayName || event.user?.nickname || event.user?.uniqueId || "TikTok viewer";
+  const message = coerceTikTokText(event.message);
+  if (!message) {
+    return null;
+  }
+  const roles = [];
+  if (event.user?.isModerator) roles.push("moderator");
+  if (event.user?.isSubscriber) roles.push("subscriber");
+  return {
+    id: String(event.id),
+    user,
+    message,
+    source: "TikTok",
+    rawSource: "builtin-webcast",
+    isFollower: Boolean(event.user?.isModerator || event.user?.isSubscriber),
+    roles
+  };
+}
+
+function mapTikTokWebcastGift(event) {
+  const giftName = coerceTikTokText(event.gift?.name);
+  const user = event.user?.displayName || event.user?.nickname || event.user?.uniqueId || "TikTok viewer";
+  if (!giftName) {
+    return null;
+  }
+  const quantity = Number(event.gift?.repeatCount || 1) || 1;
+  const diamonds = Number(event.gift?.diamondCount || 0) || 0;
+  const totalDiamonds = diamonds > 0 ? diamonds * quantity : 0;
+  return {
+    id: String(event.id),
+    source: "TikTok",
+    type: "Gift",
+    user,
+    title: giftName,
+    amount: totalDiamonds ? `${totalDiamonds.toLocaleString()} diamonds` : "",
+    quantity,
+    message: coerceTikTokText(event.message)
+  };
 }
 
 async function connectToKick() {
@@ -1871,7 +2027,8 @@ function parseRumbleMessages(data) {
   return messages;
 }
 
-function disconnectChat(showMessage = true) {
+function disconnectChat(showMessage = true, options = {}) {
+  const stopTikTokService = options.stopTikTokService !== false;
   suppressReconnect = true;
   if (suppressReconnectTimer) {
     window.clearTimeout(suppressReconnectTimer);
@@ -1886,8 +2043,10 @@ function disconnectChat(showMessage = true) {
     twitchSocket = null;
   }
   if (tiktokSocket) {
-    tiktokSocket.close();
-    tiktokSocket = null;
+    closeTikTokWebcastEventStream();
+    if (stopTikTokService) {
+      void stopTikTokWebcastService();
+    }
   }
   if (kickSocket) {
     kickSocket.close();
@@ -3963,8 +4122,8 @@ function reconcileDisabledSources(liveSettings) {
     twitchSocket = null;
   }
   if (!liveSettings.tiktokSourceEnabled && tiktokSocket) {
-    tiktokSocket.close();
-    tiktokSocket = null;
+    closeTikTokWebcastEventStream();
+    void stopTikTokWebcastService();
   }
   if (!liveSettings.kickSourceEnabled && kickSocket) {
     kickSocket.close();
@@ -4215,14 +4374,14 @@ async function ensureDesiredLiveState({ silent = false, forceRefresh = false } =
     (!needsStreamerbot && streamerbotSocket);
 
   if (!twitchMatches || !tiktokMatches || !kickMatches || !youtubeMatches || !rumbleMatches || !streamerbotMatches || hasUnexpectedSources) {
-    disconnectChat(false);
+    disconnectChat(false, { stopTikTokService: false });
     elements.connectButton.disabled = true;
 
     if (needsTwitch) {
       connectToTwitch(channel);
     }
     if (needsTikTok) {
-      connectToTikFinity();
+      void connectToTikTokLive();
     }
     if (needsKick) {
       void connectToKick();
@@ -4752,6 +4911,10 @@ function extractTikTokGifterEventUser(data, messageType) {
 
 function normalizeViewerId(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function normalizeTikTokHandle(value) {
+  return String(value || "").replace(/^@+/, "").trim().replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 48);
 }
 
 function setFeedback(message, isError, isSuccess = false) {

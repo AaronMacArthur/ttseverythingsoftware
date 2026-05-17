@@ -1,0 +1,12 @@
+{
+  "id": "fixture-binary-1",
+  "timestamp": "2026-05-17T00:00:00.000Z",
+  "direction": "received",
+  "socketId": "socket-1",
+  "socketUrlRedacted": "wss://webcast.tiktok.com/ws/",
+  "payloadKind": "binary",
+  "payloadBase64": "CJYBEgVoZWxsbw==",
+  "byteLength": 10,
+  "sha256": "fixture",
+  "sequence": 2
+}

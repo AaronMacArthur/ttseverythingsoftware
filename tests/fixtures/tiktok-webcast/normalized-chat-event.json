@@ -1,0 +1,22 @@
+{
+  "id": "tiktok:fixture-text-1:0:chat:fixture",
+  "platform": "tiktok",
+  "source": "builtin-webcast",
+  "sourceVersion": "builtin-webcast-v1",
+  "timestamp": "2026-05-17T00:00:00.000Z",
+  "streamer": "creator",
+  "eventType": "chat",
+  "confidence": 0.68,
+  "user": {
+    "uniqueId": "chatter",
+    "nickname": "chatter",
+    "displayName": "chatter"
+  },
+  "message": "hello there",
+  "raw": {
+    "frameId": "fixture-text-1",
+    "messageMethod": "WebcastChatMessage",
+    "payloadSha256": "fixture",
+    "visibleStrings": ["WebcastChatMessage", "chatter", "hello there"]
+  }
+}
