@@ -291,7 +291,7 @@ release/
 The current installer file is:
 
 ```text
-release/TTS Everything Setup 1.0.4.exe
+release/TTS Everything Setup 1.0.5.exe
 ```
 
 ## Local Data and Privacy
@@ -405,5 +405,4 @@ For a typical multistream setup:
 TTS Everything is a local multistream TTS control center. It combines chat from several platforms, speaks eligible messages through ElevenLabs or Cartesia, applies aggressive moderation, supports per-user voice behavior, provides OBS-friendly visual output, and gives streamers popout windows for combined chat and gift/donation events.
 
 Its main value is simplicity during a live stream: one app, one TTS queue, one moderation system, and one place to monitor the chat and support events that matter.
-
 
